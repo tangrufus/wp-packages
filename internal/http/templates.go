@@ -36,6 +36,7 @@ type templateSet struct {
 	adminDashboard *template.Template
 	adminPackages  *template.Template
 	adminBuilds    *template.Template
+	adminLogs      *template.Template
 }
 
 func loadTemplates(env string) *templateSet {
@@ -50,6 +51,7 @@ func loadTemplates(env string) *templateSet {
 		adminDashboard: parse("templates/admin_layout.html", "templates/admin_dashboard.html"),
 		adminPackages:  parse("templates/admin_layout.html", "templates/admin_packages.html"),
 		adminBuilds:    parse("templates/admin_layout.html", "templates/admin_builds.html"),
+		adminLogs:      parse("templates/admin_layout.html", "templates/admin_logs.html"),
 	}
 }
 

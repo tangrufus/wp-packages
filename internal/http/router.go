@@ -91,6 +91,8 @@ func NewRouter(a *app.App) chi.Router {
 		r.Get("/", handleAdminDashboard(a, tmpl))
 		r.Get("/packages", handleAdminPackages(a, tmpl))
 		r.Get("/builds", handleAdminBuilds(a, tmpl))
+		r.Get("/logs", handleAdminLogs(tmpl))
+		r.Get("/logs/stream", handleAdminLogStream(a))
 	})
 
 	r.Mount("/admin", admin)

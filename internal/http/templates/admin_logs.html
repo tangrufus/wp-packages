@@ -1,0 +1,90 @@
+{{template "admin_layout" .}}
+{{define "title"}}Logs{{end}}
+{{define "content"}}
+<div class="flex items-center justify-between mb-4">
+<h1 class="text-xl font-bold">Logs</h1>
+<div class="flex items-center gap-2 text-sm">
+<span id="status" class="text-gray-400">Connecting...</span>
+<button onclick="toggleScroll()" id="scrollBtn" class="px-3 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-xs">Auto-scroll: ON</button>
+<button onclick="clearLog()" class="px-3 py-1 rounded border border-gray-300 bg-white hover:bg-gray-50 text-xs">Clear</button>
+</div>
+</div>
+<div class="flex gap-1 mb-2" role="tablist">
+<button onclick="switchTab('wpcomposer')" id="tab-wpcomposer" role="tab" class="px-4 py-2 text-sm font-medium rounded-t border border-b-0 border-gray-300 bg-white">wpcomposer.log</button>
+<button onclick="switchTab('pipeline')" id="tab-pipeline" role="tab" class="px-4 py-2 text-sm font-medium rounded-t border border-b-0 border-gray-200 bg-gray-100 text-gray-500">pipeline.log</button>
+</div>
+<div id="log-container" class="bg-gray-900 text-gray-100 rounded-b rounded-r border border-gray-300 font-mono text-xs leading-relaxed overflow-auto" style="height: calc(100vh - 260px);">
+<pre id="log-output" class="p-4 whitespace-pre-wrap break-all"></pre>
+</div>
+<script>
+let currentTab = 'wpcomposer';
+let eventSource = null;
+let autoScroll = true;
+const maxLines = 5000;
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('[role="tab"]').forEach(function(el) {
+    if (el.id === 'tab-' + tab) {
+      el.className = 'px-4 py-2 text-sm font-medium rounded-t border border-b-0 border-gray-300 bg-white';
+    } else {
+      el.className = 'px-4 py-2 text-sm font-medium rounded-t border border-b-0 border-gray-200 bg-gray-100 text-gray-500';
+    }
+  });
+  document.getElementById('log-output').textContent = '';
+  connect();
+}
+
+function connect() {
+  if (eventSource) {
+    eventSource.close();
+  }
+  var status = document.getElementById('status');
+  status.textContent = 'Connecting...';
+  status.className = 'text-gray-400';
+
+  eventSource = new EventSource('/admin/logs/stream?file=' + currentTab);
+  eventSource.onopen = function() {
+    status.textContent = 'Connected';
+    status.className = 'text-green-600';
+  };
+  eventSource.onmessage = function(e) {
+    var output = document.getElementById('log-output');
+    var container = document.getElementById('log-container');
+    output.textContent += e.data + '\n';
+
+    // Trim if too many lines
+    var lines = output.textContent.split('\n');
+    if (lines.length > maxLines) {
+      output.textContent = lines.slice(lines.length - maxLines).join('\n');
+    }
+
+    if (autoScroll) {
+      container.scrollTop = container.scrollHeight;
+    }
+  };
+  eventSource.onerror = function() {
+    status.textContent = 'Disconnected';
+    status.className = 'text-red-500';
+    eventSource.close();
+    setTimeout(connect, 3000);
+  };
+}
+
+function toggleScroll() {
+  autoScroll = !autoScroll;
+  var btn = document.getElementById('scrollBtn');
+  btn.textContent = 'Auto-scroll: ' + (autoScroll ? 'ON' : 'OFF');
+  if (autoScroll) {
+    var container = document.getElementById('log-container');
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+function clearLog() {
+  document.getElementById('log-output').textContent = '';
+}
+
+connect();
+</script>
+{{end}}

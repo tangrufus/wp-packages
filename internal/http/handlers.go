@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 	"slices"
 	"strconv"
 	"strings"
@@ -315,6 +316,129 @@ func handleAdminBuilds(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"Builds": builds,
 		})
 	}
+}
+
+var logFiles = map[string]string{
+	"wpcomposer": filepath.Join("storage", "logs", "wpcomposer.log"),
+	"pipeline":   filepath.Join("storage", "logs", "pipeline.log"),
+}
+
+func handleAdminLogs(tmpl *templateSet) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		render(w, tmpl.adminLogs, "admin_layout", nil)
+	}
+}
+
+func handleAdminLogStream(a *app.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		file := r.URL.Query().Get("file")
+		logPath, ok := logFiles[file]
+		if !ok {
+			http.Error(w, "unknown log file", http.StatusBadRequest)
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+
+		ctx := r.Context()
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		// Wait for the file to exist
+		var f *os.File
+		for f == nil {
+			if opened, err := os.Open(logPath); err == nil {
+				f = opened
+			} else {
+				fmt.Fprintf(w, "data: Waiting for %s ...\n\n", filepath.Base(logPath))
+				flusher.Flush()
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(2 * time.Second):
+				}
+			}
+		}
+		defer f.Close()
+
+		// Send initial batch: last 200 lines
+		lines := tailFile(logPath, 200)
+		for _, line := range lines {
+			fmt.Fprintf(w, "data: %s\n\n", line)
+		}
+		flusher.Flush()
+
+		// Seek to end for tailing
+		offset, _ := f.Seek(0, 2)
+
+		buf := make([]byte, 64*1024)
+		var partial string
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				info, err := os.Stat(logPath)
+				if err != nil {
+					continue
+				}
+				if info.Size() < offset {
+					// File was truncated/rotated, reopen
+					f.Close()
+					f, err = os.Open(logPath)
+					if err != nil {
+						continue
+					}
+					offset = 0
+				}
+				if info.Size() == offset {
+					continue
+				}
+				_, _ = f.Seek(offset, 0)
+				n, err := f.Read(buf)
+				if n > 0 {
+					offset += int64(n)
+					chunk := partial + string(buf[:n])
+					partial = ""
+					newLines := strings.Split(chunk, "\n")
+					if !strings.HasSuffix(chunk, "\n") {
+						partial = newLines[len(newLines)-1]
+						newLines = newLines[:len(newLines)-1]
+					}
+					for _, line := range newLines {
+						if line != "" {
+							fmt.Fprintf(w, "data: %s\n\n", line)
+						}
+					}
+					flusher.Flush()
+				}
+				if err != nil {
+					continue
+				}
+			}
+		}
+	}
+}
+
+func tailFile(path string, n int) []string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return lines
 }
 
 // ogImageURL returns the full OG image URL for a given key.

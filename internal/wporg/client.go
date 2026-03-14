@@ -11,8 +11,13 @@ import (
 	"net/url"
 	"time"
 
+	"errors"
+
 	"github.com/roots/wp-composer/internal/config"
 )
+
+// ErrNotFound is returned when a package does not exist on WordPress.org.
+var ErrNotFound = errors.New("package not found")
 
 type Client struct {
 	http       *http.Client
@@ -144,7 +149,7 @@ func (c *Client) fetchJSON(ctx context.Context, rawURL string) (map[string]any, 
 		}
 
 		if resp.StatusCode == http.StatusNotFound {
-			return nil, fmt.Errorf("package not found (404)")
+			return nil, ErrNotFound
 		}
 		if resp.StatusCode != http.StatusOK {
 			lastErr = fmt.Errorf("unexpected status %d", resp.StatusCode)

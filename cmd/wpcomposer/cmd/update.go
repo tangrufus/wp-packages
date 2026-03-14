@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -78,8 +79,15 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			}
 
 			if fetchErr != nil {
-				application.Logger.Warn("failed to fetch", "type", p.Type, "name", p.Name, "error", fetchErr)
-				failed.Add(1)
+				if errors.Is(fetchErr, wporg.ErrNotFound) {
+					if err := packages.DeactivatePackage(gCtx, application.DB, p.ID); err != nil {
+						application.Logger.Warn("failed to deactivate 404 package", "type", p.Type, "name", p.Name, "error", err)
+					}
+					deactivated.Add(1)
+				} else {
+					application.Logger.Warn("failed to fetch", "type", p.Type, "name", p.Name, "error", fetchErr)
+					failed.Add(1)
+				}
 				return nil
 			}
 

@@ -416,7 +416,9 @@ func handleAdminLogStream(a *app.App) http.HandlerFunc {
 					}
 					for _, line := range newLines {
 						if line != "" {
-							fmt.Fprintf(w, "data: %s\n\n", line)
+							if _, werr := fmt.Fprintf(w, "data: %s\n\n", line); werr != nil {
+								return
+							}
 						}
 					}
 					flusher.Flush()

@@ -40,9 +40,11 @@ func NewRouter(a *app.App) chi.Router {
 		r.Get(f, staticServer.ServeHTTP)
 	}
 
+	// Ensure fallback OG image exists (uploads to R2 in production)
+	ensureLocalFallbackOG(a.Config)
+
 	// Serve OG images from local disk (dev mode — production uses CDN)
 	if a.Config.R2.CDNPublicURL == "" {
-		ensureLocalFallbackOG()
 		r.Get("/og/*", handleOGImage())
 	}
 

@@ -341,18 +341,24 @@ func handleOGImage() http.HandlerFunc {
 	}
 }
 
-// ensureLocalFallbackOG generates the fallback OG image to disk if it doesn't exist.
-func ensureLocalFallbackOG() {
+// ensureLocalFallbackOG generates the fallback OG image to disk and uploads to R2 if configured.
+func ensureLocalFallbackOG(cfg *config.Config) {
 	path := "storage/og/social/default.png"
-	if _, err := os.Stat(path); err == nil {
-		return
-	}
+
 	data, err := og.GenerateFallbackImage()
 	if err != nil {
 		return
 	}
+
+	// Always write locally
 	_ = os.MkdirAll("storage/og/social", 0o755)
 	_ = os.WriteFile(path, data, 0o644)
+
+	// Upload to R2 CDN if configured
+	uploader := og.NewUploader(cfg.R2)
+	if uploader.IsR2() {
+		_ = uploader.Upload(context.Background(), "social/default.png", data)
+	}
 }
 
 // generatePackageOG generates an OG image for a package and saves it.

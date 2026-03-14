@@ -1,6 +1,6 @@
 {{ app_domain }} {
-	# TLS via ACME (automatic)
-	tls {{ caddy_email }}
+	# TLS via Cloudflare origin certificate
+	tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin-key.pem
 
 	# Compression
 	encode gzip zstd
@@ -15,7 +15,5 @@
 	# Reverse proxy to Go app
 	reverse_proxy {{ go_upstream_addr | default("localhost" ~ go_listen_addr) }} {
 		header_up X-Real-IP {remote_host}
-		header_up X-Forwarded-For {remote_host}
-		header_up X-Forwarded-Proto {scheme}
 	}
 }

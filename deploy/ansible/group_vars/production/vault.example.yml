@@ -16,3 +16,11 @@ vault_r2_bucket: "REPLACE_ME"
 vault_r2_endpoint: "REPLACE_ME"
 vault_r2_cdn_bucket: "REPLACE_ME"
 vault_sentry_dsn: "REPLACE_ME"
+vault_ssl_certificate: |
+  -----BEGIN CERTIFICATE-----
+  REPLACE_ME
+  -----END CERTIFICATE-----
+vault_ssl_private_key: |
+  -----BEGIN PRIVATE KEY-----
+  REPLACE_ME
+  -----END PRIVATE KEY-----

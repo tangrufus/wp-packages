@@ -23,6 +23,32 @@
     state: present
     update_cache: yes
 
+- name: Create Caddy certs directory
+  file:
+    path: /etc/caddy/certs
+    state: directory
+    owner: caddy
+    group: caddy
+    mode: "0700"
+
+- name: Deploy Cloudflare origin certificate
+  copy:
+    content: "{{ vault_ssl_certificate }}"
+    dest: /etc/caddy/certs/origin.pem
+    owner: caddy
+    group: caddy
+    mode: "0600"
+  notify: Reload Caddy
+
+- name: Deploy Cloudflare origin key
+  copy:
+    content: "{{ vault_ssl_private_key }}"
+    dest: /etc/caddy/certs/origin-key.pem
+    owner: caddy
+    group: caddy
+    mode: "0600"
+  notify: Reload Caddy
+
 - name: Deploy Caddyfile
   template:
     src: Caddyfile.j2

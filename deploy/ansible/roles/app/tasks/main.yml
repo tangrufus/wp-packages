@@ -10,6 +10,7 @@
     - "{{ app_root }}/releases"
     - "{{ app_root }}/shared"
     - "{{ app_root }}/shared/storage"
+    - "{{ app_root }}/shared/storage/logs"
     - "{{ app_root }}/shared/storage/repository"
     - "{{ app_root }}/shared/storage/repository/builds"
 

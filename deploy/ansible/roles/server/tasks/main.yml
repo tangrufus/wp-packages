@@ -29,6 +29,15 @@
     groups: www-data
     append: yes
 
+- name: Allow deploy user passwordless sudo
+  copy:
+    content: "deploy ALL=(ALL) NOPASSWD:ALL\n"
+    dest: /etc/sudoers.d/deploy
+    owner: root
+    group: root
+    mode: "0440"
+    validate: "visudo -cf %s"
+
 - name: Add SSH keys from GitHub
   authorized_key:
     user: deploy

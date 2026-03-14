@@ -63,17 +63,21 @@
     ln -sfn {{ release_path }} {{ app_root }}/current.tmp
     mv -T {{ app_root }}/current.tmp {{ app_root }}/current
 
+- name: Check if wpcomposer service exists
+  stat:
+    path: /etc/systemd/system/wpcomposer.service
+  register: wpcomposer_service
+
 - name: Restart wpcomposer service
   service:
     name: wpcomposer
     state: restarted
+  when: wpcomposer_service.stat.exists
 
 - name: Clean up old releases
   shell: |
     cd {{ app_root }}/releases
     ls -1dt */ | tail -n +6 | xargs -r rm -rf
-  args:
-    warn: false
 
 - name: Clean up local build artifact
   delegate_to: localhost

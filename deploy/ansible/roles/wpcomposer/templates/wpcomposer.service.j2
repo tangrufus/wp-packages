@@ -1,6 +1,7 @@
 [Unit]
 Description=WP Composer
 After=network.target
+Requires=wpcomposer.socket
 
 [Service]
 Type=simple
@@ -9,7 +10,7 @@ Group=www-data
 WorkingDirectory={{ app_root }}/current
 ExecStart={{ app_root }}/current/{{ go_binary_name }} serve --db {{ db_path }}
 Restart=always
-RestartSec=5s
+RestartSec=1s
 StandardOutput=append:{{ app_root }}/shared/storage/logs/wpcomposer.log
 StandardError=append:{{ app_root }}/shared/storage/logs/wpcomposer.log
 EnvironmentFile={{ app_root }}/shared/.env

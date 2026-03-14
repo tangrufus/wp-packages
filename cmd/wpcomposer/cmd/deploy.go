@@ -21,6 +21,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	repoDir := filepath.Join("storage", "repository")
 	cleanup, _ := cmd.Flags().GetBool("cleanup")
 	toR2, _ := cmd.Flags().GetBool("to-r2")
+	previousBuildID, _ := deploy.CurrentBuildID(repoDir)
 
 	r2Cleanup, _ := cmd.Flags().GetBool("r2-cleanup")
 	retainCount, _ := cmd.Flags().GetInt("retain")
@@ -77,7 +78,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		// Sync to R2 first, then promote locally
 		if toR2 || application.Config.R2.Enabled {
-			if err := deploy.SyncToR2(cmd.Context(), application.Config.R2, buildDir, target, application.Logger); err != nil {
+			if err := deploy.SyncToR2(cmd.Context(), application.Config.R2, buildDir, target, previousBuildID, application.Logger); err != nil {
 				return fmt.Errorf("R2 sync failed: %w", err)
 			}
 			recordR2Sync(cmd, target)
@@ -109,7 +110,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Sync to R2 first, then promote locally
 	if toR2 || application.Config.R2.Enabled {
-		if err := deploy.SyncToR2(cmd.Context(), application.Config.R2, buildDir, buildID, application.Logger); err != nil {
+		if err := deploy.SyncToR2(cmd.Context(), application.Config.R2, buildDir, buildID, previousBuildID, application.Logger); err != nil {
 			return fmt.Errorf("R2 sync failed: %w", err)
 		}
 		recordR2Sync(cmd, buildID)

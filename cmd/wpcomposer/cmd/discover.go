@@ -109,6 +109,8 @@ func discoverFromConfig(ctx context.Context, pkgType string, limit, concurrency 
 }
 
 func discoverFromSVN(ctx context.Context, pkgType string, limit int) error {
+	const svnBatchSize = 500
+
 	client := wporg.NewClient(application.Config.Discovery, application.Logger)
 
 	type svnSource struct {
@@ -129,20 +131,46 @@ func discoverFromSVN(ctx context.Context, pkgType string, limit int) error {
 		application.Logger.Info("discovering from SVN", "type", src.pkgType, "url", src.url)
 
 		var count, failed int
+		batch := make([]packages.ShellEntry, 0, svnBatchSize)
+
+		flush := func() {
+			if len(batch) == 0 {
+				return
+			}
+			if err := packages.BatchUpsertShellPackages(ctx, application.DB, batch); err != nil {
+				application.Logger.Warn("batch upsert failed, falling back to individual", "error", err)
+				for _, e := range batch {
+					if err := packages.UpsertShellPackage(ctx, application.DB, e.Type, e.Name, e.LastCommitted); err != nil {
+						application.Logger.Warn("failed to upsert shell package", "slug", e.Name, "error", err)
+						failed++
+						count--
+					}
+				}
+			}
+			batch = batch[:0]
+		}
+
 		err := client.ParseSVNListing(ctx, src.url, func(entry wporg.SVNEntry) error {
 			if limit > 0 && totalCount >= limit {
 				return errLimitReached
 			}
 
-			if err := packages.UpsertShellPackage(ctx, application.DB, src.pkgType, entry.Slug, entry.LastCommitted); err != nil {
-				application.Logger.Warn("failed to upsert shell package", "slug", entry.Slug, "error", err)
-				failed++
-				return nil
-			}
+			batch = append(batch, packages.ShellEntry{
+				Type:          src.pkgType,
+				Name:          entry.Slug,
+				LastCommitted: entry.LastCommitted,
+			})
 			count++
 			totalCount++
+
+			if len(batch) >= svnBatchSize {
+				flush()
+			}
 			return nil
 		})
+
+		flush()
+
 		if err != nil && err != errLimitReached {
 			return fmt.Errorf("SVN discovery for %s: %w", src.pkgType, err)
 		}

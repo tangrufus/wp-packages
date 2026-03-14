@@ -139,6 +139,112 @@ func UpsertShellPackage(ctx context.Context, db *sql.DB, pkgType, name string, l
 	return nil
 }
 
+// ShellEntry holds minimal package data for batch SVN discovery upserts.
+type ShellEntry struct {
+	Type          string
+	Name          string
+	LastCommitted *time.Time
+}
+
+// BatchUpsertShellPackages inserts or updates shell package records in a single transaction.
+func BatchUpsertShellPackages(ctx context.Context, db *sql.DB, entries []ShellEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO packages (type, name, provider_group, last_committed, is_active, versions_json, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 1, '{}', ?, ?)
+		ON CONFLICT(type, name) DO UPDATE SET
+			last_committed = CASE
+				WHEN excluded.last_committed > COALESCE(packages.last_committed, '')
+				THEN excluded.last_committed
+				ELSE packages.last_committed
+			END,
+			provider_group = CASE
+				WHEN excluded.last_committed > COALESCE(packages.last_committed, '')
+				THEN excluded.provider_group
+				ELSE packages.provider_group
+			END,
+			updated_at = excluded.updated_at`)
+	if err != nil {
+		return fmt.Errorf("preparing statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, e := range entries {
+		pg := ComputeProviderGroup(e.LastCommitted)
+		if _, err := stmt.ExecContext(ctx, e.Type, e.Name, pg, timeStr(e.LastCommitted), now, now); err != nil {
+			return fmt.Errorf("upserting shell package %s/%s: %w", e.Type, e.Name, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// BatchUpsertPackages inserts or updates full package records in a single transaction.
+func BatchUpsertPackages(ctx context.Context, db *sql.DB, pkgs []*Package) error {
+	if len(pkgs) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		INSERT INTO packages (
+			type, name, display_name, description, author, homepage, slug_url,
+			provider_group, versions_json, downloads, active_installs,
+			current_version, rating, num_ratings, is_active,
+			last_committed, last_synced_at, last_sync_run_id,
+			created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(type, name) DO UPDATE SET
+			display_name = excluded.display_name,
+			description = excluded.description,
+			author = excluded.author,
+			homepage = excluded.homepage,
+			slug_url = excluded.slug_url,
+			provider_group = excluded.provider_group,
+			versions_json = excluded.versions_json,
+			downloads = excluded.downloads,
+			active_installs = excluded.active_installs,
+			current_version = excluded.current_version,
+			rating = excluded.rating,
+			num_ratings = excluded.num_ratings,
+			is_active = excluded.is_active,
+			last_committed = excluded.last_committed,
+			last_synced_at = excluded.last_synced_at,
+			last_sync_run_id = COALESCE(excluded.last_sync_run_id, packages.last_sync_run_id),
+			updated_at = excluded.updated_at`)
+	if err != nil {
+		return fmt.Errorf("preparing statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, pkg := range pkgs {
+		if _, err := stmt.ExecContext(ctx,
+			pkg.Type, pkg.Name, pkg.DisplayName, pkg.Description, pkg.Author,
+			pkg.Homepage, pkg.SlugURL, pkg.ProviderGroup, pkg.VersionsJSON,
+			pkg.Downloads, pkg.ActiveInstalls, pkg.CurrentVersion, pkg.Rating,
+			pkg.NumRatings, boolToInt(pkg.IsActive),
+			timeStr(pkg.LastCommitted), timeStr(pkg.LastSyncedAt), pkg.LastSyncRunID,
+			now, now,
+		); err != nil {
+			return fmt.Errorf("upserting package %s/%s: %w", pkg.Type, pkg.Name, err)
+		}
+	}
+	return tx.Commit()
+}
+
 type UpdateQueryOpts struct {
 	Type            string
 	Name            string

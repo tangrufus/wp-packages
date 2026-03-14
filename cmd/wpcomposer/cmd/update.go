@@ -62,9 +62,42 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	client := wporg.NewClient(application.Config.Discovery, application.Logger)
 
+	const writeBatchSize = 100
+
 	var succeeded, failed, deactivated atomic.Int64
 	g, gCtx := errgroup.WithContext(ctx)
 	g.SetLimit(concurrency)
+
+	// Writer goroutine batches DB writes
+	writeCh := make(chan *packages.Package, concurrency*2)
+	writeErrCh := make(chan error, 1)
+	go func() {
+		defer close(writeErrCh)
+		batch := make([]*packages.Package, 0, writeBatchSize)
+		flush := func() {
+			if len(batch) == 0 {
+				return
+			}
+			if err := packages.BatchUpsertPackages(ctx, application.DB, batch); err != nil {
+				application.Logger.Warn("batch upsert failed, falling back to individual", "error", err)
+				for _, pkg := range batch {
+					if err := packages.UpsertPackage(ctx, application.DB, pkg); err != nil {
+						application.Logger.Warn("failed to store", "type", pkg.Type, "name", pkg.Name, "error", err)
+						failed.Add(1)
+						succeeded.Add(-1)
+					}
+				}
+			}
+			batch = batch[:0]
+		}
+		for pkg := range writeCh {
+			batch = append(batch, pkg)
+			if len(batch) >= writeBatchSize {
+				flush()
+			}
+		}
+		flush()
+	}()
 
 	for _, p := range pkgs {
 		p := p
@@ -123,13 +156,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			pkg.LastSyncedAt = &now
 			pkg.LastSyncRunID = &syncRun.RunID
 
-			if err := packages.UpsertPackage(gCtx, application.DB, pkg); err != nil {
-				application.Logger.Warn("failed to store", "type", p.Type, "name", p.Name, "error", err)
-				failed.Add(1)
-				return nil
-			}
-
 			succeeded.Add(1)
+			writeCh <- pkg
+
 			total := succeeded.Load() + failed.Load() + deactivated.Load()
 			if total%500 == 0 {
 				application.Logger.Info("update progress",
@@ -148,6 +177,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	if err := g.Wait(); err != nil {
 		return err
 	}
+
+	close(writeCh)
+	<-writeErrCh // wait for writer to finish
 
 	stats := map[string]any{
 		"updated":     succeeded.Load(),

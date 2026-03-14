@@ -10,7 +10,10 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -41,12 +44,18 @@ type buildFile struct {
 }
 
 // SyncToR2 uploads all files in a build directory to R2 under a versioned
-// release prefix (releases/<buildID>/). After all release files are uploaded,
-// it rewrites the root packages.json to point at the new prefix — the atomic
-// pointer swap that makes the new release live.
-func SyncToR2(ctx context.Context, cfg config.R2Config, buildDir, buildID string, logger *slog.Logger) error {
+// release prefix (releases/<buildID>/). When previousBuildID is non-empty,
+// content-addressed p/ files that exist in both builds are copied within R2
+// instead of re-uploaded. After all release files are uploaded, it rewrites
+// the root packages.json to point at the new prefix — the atomic pointer swap
+// that makes the new release live.
+func SyncToR2(ctx context.Context, cfg config.R2Config, buildDir, buildID, previousBuildID string, logger *slog.Logger) error {
 	client := newS3Client(cfg)
 	releasePrefix := "releases/" + buildID + "/"
+	previousPrefix := ""
+	if previousBuildID != "" {
+		previousPrefix = "releases/" + previousBuildID + "/"
+	}
 
 	// Collect all files, then sort: index files last.
 	var files []buildFile
@@ -60,21 +69,66 @@ func SyncToR2(ctx context.Context, cfg config.R2Config, buildDir, buildID string
 
 	sortBuildFiles(files)
 
-	// Upload all files under the release prefix.
-	var uploaded int
+	// Extract packages.json data before parallel upload.
 	var packagesData []byte
 	for _, f := range files {
-		key := releasePrefix + f.relPath
-		if err := putObjectWithRetry(ctx, client, cfg.Bucket, key, f.data, logger); err != nil {
-			return fmt.Errorf("R2 sync: %w", err)
-		}
 		if f.relPath == r2IndexFile {
 			packagesData = f.data
+			break
 		}
-		uploaded++
-		if uploaded%100 == 0 {
-			logger.Info("R2 upload progress", "uploaded", uploaded, "total", len(files))
+	}
+
+	// Build a set of content-addressed p/ files from the previous build for CopyObject.
+	previousKeys := make(map[string]bool)
+	if previousPrefix != "" {
+		for _, f := range files {
+			if strings.HasPrefix(f.relPath, "p/") && strings.Contains(f.relPath, "$") {
+				previousKeys[previousPrefix+f.relPath] = true
+			}
 		}
+	}
+
+	// Upload all files under the release prefix (parallel).
+	var uploaded, copied atomic.Int64
+	g, gCtx := errgroup.WithContext(ctx)
+	g.SetLimit(20)
+
+	for _, f := range files {
+		f := f
+		g.Go(func() error {
+			key := releasePrefix + f.relPath
+
+			// For content-addressed p/ files that existed in the previous build,
+			// use CopyObject within R2 instead of re-uploading.
+			if previousPrefix != "" && strings.HasPrefix(f.relPath, "p/") && strings.Contains(f.relPath, "$") {
+				srcKey := previousPrefix + f.relPath
+				if previousKeys[srcKey] {
+					if err := copyObjectWithRetry(gCtx, client, cfg.Bucket, srcKey, key, logger); err == nil {
+						copied.Add(1)
+						n := uploaded.Add(1) + copied.Load()
+						if n%500 == 0 {
+							logger.Info("R2 upload progress", "uploaded", uploaded.Load(), "copied", copied.Load(), "total", len(files))
+						}
+						return nil
+					}
+					// Fall through to upload on copy failure.
+					logger.Warn("CopyObject failed, falling back to upload", "key", key)
+				}
+			}
+
+			if err := putObjectWithRetry(gCtx, client, cfg.Bucket, key, f.data, logger); err != nil {
+				return fmt.Errorf("R2 sync: %w", err)
+			}
+			n := uploaded.Add(1)
+			if n%500 == 0 {
+				logger.Info("R2 upload progress", "uploaded", int(n), "total", len(files))
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	// Rewrite and upload root packages.json — the atomic switch.
@@ -89,7 +143,7 @@ func SyncToR2(ctx context.Context, cfg config.R2Config, buildDir, buildID string
 		return fmt.Errorf("R2 sync (root packages.json): %w", err)
 	}
 
-	logger.Info("R2 sync complete", "files", uploaded, "release", releasePrefix)
+	logger.Info("R2 sync complete", "uploaded", uploaded.Load(), "copied", copied.Load(), "release", releasePrefix)
 	return nil
 }
 
@@ -173,6 +227,35 @@ func putObjectWithRetry(ctx context.Context, client *s3.Client, bucket, key stri
 		}
 	}
 	return fmt.Errorf("uploading %s after %d attempts: %w", key, r2MaxRetries, lastErr)
+}
+
+// copyObjectWithRetry copies a single object within R2 with exponential backoff retry.
+func copyObjectWithRetry(ctx context.Context, client *s3.Client, bucket, srcKey, dstKey string, logger *slog.Logger) error {
+	copySource := bucket + "/" + srcKey
+	cacheControl := CacheControlForPath(dstKey)
+
+	var lastErr error
+	for attempt := range r2MaxRetries {
+		if attempt > 0 {
+			delay := time.Duration(float64(r2RetryBaseMs)*math.Pow(2, float64(attempt-1))) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		_, lastErr = client.CopyObject(ctx, &s3.CopyObjectInput{
+			Bucket:       aws.String(bucket),
+			CopySource:   aws.String(copySource),
+			Key:          aws.String(dstKey),
+			CacheControl: aws.String(cacheControl),
+		})
+		if lastErr == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("copying %s -> %s after %d attempts: %w", srcKey, dstKey, r2MaxRetries, lastErr)
 }
 
 // CleanupR2 removes old release prefixes from R2, keeping the live release,

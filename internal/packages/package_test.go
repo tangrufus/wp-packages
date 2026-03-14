@@ -204,6 +204,131 @@ func TestGetPackagesNeedingUpdate(t *testing.T) {
 	}
 }
 
+func TestBatchUpsertShellPackages(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+
+	lc1 := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
+	lc2 := time.Date(2026, 2, 20, 0, 0, 0, 0, time.UTC)
+
+	entries := []ShellEntry{
+		{Type: "plugin", Name: "akismet", LastCommitted: &lc1},
+		{Type: "theme", Name: "astra", LastCommitted: &lc2},
+	}
+
+	err := BatchUpsertShellPackages(ctx, database, entries)
+	if err != nil {
+		t.Fatalf("batch upsert: %v", err)
+	}
+
+	var count int
+	_ = database.QueryRow("SELECT COUNT(*) FROM packages").Scan(&count)
+	if count != 2 {
+		t.Errorf("expected 2 packages, got %d", count)
+	}
+
+	// Verify individual values
+	var name string
+	var isActive int
+	_ = database.QueryRow("SELECT name, is_active FROM packages WHERE type='plugin' AND name='akismet'").Scan(&name, &isActive)
+	if name != "akismet" || isActive != 1 {
+		t.Errorf("got name=%s active=%d", name, isActive)
+	}
+
+	// Batch upsert with older dates should not overwrite
+	olderLC := time.Date(2025, 6, 1, 0, 0, 0, 0, time.UTC)
+	entries2 := []ShellEntry{
+		{Type: "plugin", Name: "akismet", LastCommitted: &olderLC},
+	}
+	err = BatchUpsertShellPackages(ctx, database, entries2)
+	if err != nil {
+		t.Fatalf("second batch upsert: %v", err)
+	}
+
+	var lastCommitted string
+	_ = database.QueryRow("SELECT last_committed FROM packages WHERE name='akismet'").Scan(&lastCommitted)
+	if lastCommitted != "2026-01-15T00:00:00Z" {
+		t.Errorf("last_committed should not have been overwritten, got %s", lastCommitted)
+	}
+}
+
+func TestBatchUpsertShellPackagesEmpty(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+
+	err := BatchUpsertShellPackages(ctx, database, nil)
+	if err != nil {
+		t.Fatalf("empty batch upsert should not fail: %v", err)
+	}
+
+	err = BatchUpsertShellPackages(ctx, database, []ShellEntry{})
+	if err != nil {
+		t.Fatalf("empty slice batch upsert should not fail: %v", err)
+	}
+
+	var count int
+	_ = database.QueryRow("SELECT COUNT(*) FROM packages").Scan(&count)
+	if count != 0 {
+		t.Errorf("expected 0 packages, got %d", count)
+	}
+}
+
+func TestBatchUpsertPackages(t *testing.T) {
+	database := setupTestDB(t)
+	ctx := context.Background()
+
+	ver1 := "5.0"
+	ver2 := "4.0"
+	pkgs := []*Package{
+		{
+			Type:           "plugin",
+			Name:           "akismet",
+			VersionsJSON:   `{"5.0":"https://example.com/5.0.zip"}`,
+			CurrentVersion: &ver1,
+			IsActive:       true,
+			Downloads:      1000,
+		},
+		{
+			Type:           "theme",
+			Name:           "astra",
+			VersionsJSON:   `{"4.0":"https://example.com/4.0.zip"}`,
+			CurrentVersion: &ver2,
+			IsActive:       true,
+			Downloads:      500,
+		},
+	}
+
+	err := BatchUpsertPackages(ctx, database, pkgs)
+	if err != nil {
+		t.Fatalf("batch upsert: %v", err)
+	}
+
+	var count int
+	_ = database.QueryRow("SELECT COUNT(*) FROM packages").Scan(&count)
+	if count != 2 {
+		t.Errorf("expected 2 packages, got %d", count)
+	}
+
+	// Update and re-upsert
+	pkgs[0].Downloads = 2000
+	err = BatchUpsertPackages(ctx, database, pkgs[:1])
+	if err != nil {
+		t.Fatalf("second batch upsert: %v", err)
+	}
+
+	var downloads int64
+	_ = database.QueryRow("SELECT downloads FROM packages WHERE name='akismet'").Scan(&downloads)
+	if downloads != 2000 {
+		t.Errorf("downloads = %d, want 2000", downloads)
+	}
+
+	// Empty batch should be no-op
+	err = BatchUpsertPackages(ctx, database, nil)
+	if err != nil {
+		t.Fatalf("empty batch should not fail: %v", err)
+	}
+}
+
 func TestAllocateSyncRunID(t *testing.T) {
 	database := setupTestDB(t)
 	ctx := context.Background()

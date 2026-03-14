@@ -9,16 +9,20 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // BuildOpts configures a repository build.
 type BuildOpts struct {
-	OutputDir   string // base output dir (e.g. storage/repository/builds)
-	AppURL      string // absolute app URL for notify-batch
-	Force       bool
-	PackageName string // optional: build single package
-	Logger      *slog.Logger
+	OutputDir        string // base output dir (e.g. storage/repository/builds)
+	AppURL           string // absolute app URL for notify-batch
+	Force            bool
+	PackageName      string // optional: build single package
+	PreviousBuildDir string // optional: previous build dir for incremental builds
+	Logger           *slog.Logger
 }
 
 // BuildResult holds build metadata for manifest.json and the builds table.
@@ -37,6 +41,12 @@ type BuildResult struct {
 	BuildDir        string
 }
 
+// fileWrite holds a pending file write for the parallel writer.
+type fileWrite struct {
+	path string
+	data []byte
+}
+
 // Build generates all Composer repository artifacts.
 func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error) {
 	started := time.Now().UTC()
@@ -48,14 +58,25 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 		return nil, fmt.Errorf("build directory already exists: %s (another build started in the same second?)", buildID)
 	}
 
-	if err := os.MkdirAll(filepath.Join(buildDir, "p"), 0755); err != nil {
-		return nil, fmt.Errorf("creating build dir: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Join(buildDir, "p2"), 0755); err != nil {
-		return nil, fmt.Errorf("creating p2 dir: %w", err)
+	// Pre-create directories upfront
+	for _, dir := range []string{
+		filepath.Join(buildDir, "p", "wp-plugin"),
+		filepath.Join(buildDir, "p", "wp-theme"),
+		filepath.Join(buildDir, "p2", "wp-plugin"),
+		filepath.Join(buildDir, "p2", "wp-theme"),
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("creating dir %s: %w", dir, err)
+		}
 	}
 
 	opts.Logger.Info("starting build", "build_id", buildID)
+
+	// Load previous build hashes for incremental builds
+	prevHashes := loadPreviousBuildHashes(opts.PreviousBuildDir)
+	if len(prevHashes) > 0 {
+		opts.Logger.Info("loaded previous build hashes for incremental build", "previous_files", len(prevHashes))
+	}
 
 	// Snapshot sync run ID for consistency (skip with --force)
 	var snapshotID *int64
@@ -96,7 +117,9 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 	packageHashes := make(map[string]string)
 	// providerPackages: providerGroup -> []composerName
 	providerPackages := make(map[string][]string)
-	var totalPkgs, changedPkgs, artifactCount int
+	// pendingWrites collects files for parallel writing
+	var pendingWrites []fileWrite
+	var totalPkgs, changedPkgs, skippedPkgs, artifactCount int
 
 	for rows.Next() {
 		var (
@@ -144,7 +167,7 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 			composerVersions[ver] = ComposerVersion(pkgType, name, ver, dlURL, meta)
 		}
 
-		// Write p/ file (content-addressed)
+		// Build p/ file payload (content-addressed)
 		pkgPayload := map[string]any{
 			"packages": map[string]any{
 				composerName: composerVersions,
@@ -155,35 +178,29 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 			return nil, fmt.Errorf("hashing %s: %w", composerName, err)
 		}
 
-		pkgDir := filepath.Join(buildDir, "p", ComposerName(pkgType, name))
-		if err := os.MkdirAll(filepath.Dir(pkgDir), 0755); err != nil {
-			return nil, fmt.Errorf("creating p dir for %s: %w", composerName, err)
-		}
-		pkgFile := fmt.Sprintf("%s$%s.json", pkgDir, hash)
-		if err := os.WriteFile(pkgFile, data, 0644); err != nil {
-			return nil, fmt.Errorf("writing %s: %w", pkgFile, err)
+		pkgFile := filepath.Join(buildDir, "p", composerName+"$"+hash+".json")
+		p2File := filepath.Join(buildDir, "p2", composerName+".json")
+
+		// Check if we can hard-link from previous build (incremental)
+		prevKey := "p/" + composerName + "$" + hash + ".json"
+		if prevPath, ok := prevHashes[prevKey]; ok {
+			// Hard-link the p/ file from previous build
+			if linkErr := os.Link(prevPath, pkgFile); linkErr == nil {
+				skippedPkgs++
+			} else {
+				// Fall back to writing
+				pendingWrites = append(pendingWrites, fileWrite{path: pkgFile, data: data})
+				changedPkgs++
+			}
+		} else {
+			pendingWrites = append(pendingWrites, fileWrite{path: pkgFile, data: data})
+			changedPkgs++
 		}
 		packageHashes[composerName] = hash
 		artifactCount++
-		changedPkgs++
 
-		// Write p2/ file
-		p2Dir := filepath.Join(buildDir, "p2", ComposerName(pkgType, name))
-		if err := os.MkdirAll(filepath.Dir(p2Dir), 0755); err != nil {
-			return nil, fmt.Errorf("creating p2 dir for %s: %w", composerName, err)
-		}
-		p2Payload := map[string]any{
-			"packages": map[string]any{
-				composerName: composerVersions,
-			},
-		}
-		p2Data, err := DeterministicJSON(p2Payload)
-		if err != nil {
-			return nil, fmt.Errorf("encoding p2 %s: %w", composerName, err)
-		}
-		if err := os.WriteFile(p2Dir+".json", p2Data, 0644); err != nil {
-			return nil, fmt.Errorf("writing p2 %s: %w", composerName, err)
-		}
+		// Reuse the same serialized JSON bytes for p2/ (same content as p/)
+		pendingWrites = append(pendingWrites, fileWrite{path: p2File, data: data})
 		artifactCount++
 
 		// Track provider group
@@ -215,9 +232,10 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 		}
 
 		filename := fmt.Sprintf("providers-%s$%s.json", group, hash)
-		if err := os.WriteFile(filepath.Join(buildDir, "p", filename), data, 0644); err != nil {
-			return nil, fmt.Errorf("writing provider %s: %w", filename, err)
-		}
+		pendingWrites = append(pendingWrites, fileWrite{
+			path: filepath.Join(buildDir, "p", filename),
+			data: data,
+		})
 		providerIncludes[fmt.Sprintf("p/%s", filename)] = map[string]string{"sha256": hash}
 		artifactCount++
 	}
@@ -241,9 +259,10 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 	if err != nil {
 		return nil, fmt.Errorf("hashing packages.json: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(buildDir, "packages.json"), rootData, 0644); err != nil {
-		return nil, fmt.Errorf("writing packages.json: %w", err)
-	}
+	pendingWrites = append(pendingWrites, fileWrite{
+		path: filepath.Join(buildDir, "packages.json"),
+		data: rootData,
+	})
 	artifactCount++
 
 	// Write manifest.json
@@ -255,7 +274,7 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 		"duration_seconds": int(finished.Sub(started).Seconds()),
 		"packages_total":   totalPkgs,
 		"packages_changed": changedPkgs,
-		"packages_skipped": totalPkgs - changedPkgs,
+		"packages_skipped": skippedPkgs,
 		"provider_groups":  len(providerPackages),
 		"artifact_count":   artifactCount,
 		"root_hash":        rootHash,
@@ -265,18 +284,35 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 	}
 
 	manifestData, _ := DeterministicJSON(manifest)
-	if err := os.WriteFile(filepath.Join(buildDir, "manifest.json"), manifestData, 0644); err != nil {
-		return nil, fmt.Errorf("writing manifest.json: %w", err)
-	}
+	pendingWrites = append(pendingWrites, fileWrite{
+		path: filepath.Join(buildDir, "manifest.json"),
+		data: manifestData,
+	})
 	artifactCount++
 
-	// Validate integrity
-	errors := ValidateIntegrity(buildDir)
-	if len(errors) > 0 {
-		for _, e := range errors {
+	// Parallel file writes with 8 workers
+	g, _ := errgroup.WithContext(ctx)
+	g.SetLimit(8)
+	for _, w := range pendingWrites {
+		w := w
+		g.Go(func() error {
+			if err := os.WriteFile(w.path, w.data, 0644); err != nil {
+				return fmt.Errorf("writing %s: %w", w.path, err)
+			}
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// In-memory integrity validation (avoid re-reading files from disk)
+	integrityErrors := validateIntegrityInMemory(rootData, packageHashes, providerIncludes, pendingWrites, buildDir)
+	if len(integrityErrors) > 0 {
+		for _, e := range integrityErrors {
 			opts.Logger.Error("integrity error", "error", e)
 		}
-		return nil, fmt.Errorf("integrity validation failed with %d errors", len(errors))
+		return nil, fmt.Errorf("integrity validation failed with %d errors", len(integrityErrors))
 	}
 
 	result := &BuildResult{
@@ -286,7 +322,7 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 		DurationSeconds: int(finished.Sub(started).Seconds()),
 		PackagesTotal:   totalPkgs,
 		PackagesChanged: changedPkgs,
-		PackagesSkipped: totalPkgs - changedPkgs,
+		PackagesSkipped: skippedPkgs,
 		ProviderGroups:  len(providerPackages),
 		ArtifactCount:   artifactCount,
 		RootHash:        rootHash,
@@ -297,11 +333,95 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 	opts.Logger.Info("build complete",
 		"build_id", buildID,
 		"packages", totalPkgs,
+		"changed", changedPkgs,
+		"skipped", skippedPkgs,
 		"artifacts", artifactCount,
 		"duration", finished.Sub(started).String(),
 	)
 
 	return result, nil
+}
+
+// loadPreviousBuildHashes scans a previous build directory for content-addressed
+// filenames under p/ and returns a map of relative path -> absolute path.
+func loadPreviousBuildHashes(prevDir string) map[string]string {
+	if prevDir == "" {
+		return nil
+	}
+	hashes := make(map[string]string)
+	pDir := filepath.Join(prevDir, "p")
+	_ = filepath.Walk(pDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(prevDir, path)
+		if err != nil {
+			return nil
+		}
+		// Only track content-addressed files (contain $)
+		if strings.Contains(filepath.Base(rel), "$") {
+			hashes[rel] = path
+		}
+		return nil
+	})
+	return hashes
+}
+
+// validateIntegrityInMemory checks build integrity using in-memory data
+// instead of re-reading files from disk.
+func validateIntegrityInMemory(rootData []byte, packageHashes map[string]string, providerIncludes map[string]map[string]string, writes []fileWrite, buildDir string) []string {
+	var errs []string
+
+	// Build a map of relative path -> data from pending writes for quick lookup
+	writeMap := make(map[string][]byte, len(writes))
+	for _, w := range writes {
+		rel, err := filepath.Rel(buildDir, w.path)
+		if err == nil {
+			writeMap[rel] = w.data
+		}
+	}
+
+	// Verify root packages.json is parseable
+	var root map[string]any
+	if err := json.Unmarshal(rootData, &root); err != nil {
+		return []string{fmt.Sprintf("packages.json invalid: %v", err)}
+	}
+
+	// Verify provider-includes hashes
+	for providerPath, hashInfo := range providerIncludes {
+		declaredHash := hashInfo["sha256"]
+		data, ok := writeMap[providerPath]
+		if !ok {
+			errs = append(errs, fmt.Sprintf("provider file missing in writes: %s", providerPath))
+			continue
+		}
+		actualHash := fmt.Sprintf("%x", sha256.Sum256(data))
+		if actualHash != declaredHash {
+			errs = append(errs, fmt.Sprintf("provider hash mismatch: %s (declared=%s actual=%s)", providerPath, declaredHash, actualHash))
+		}
+	}
+
+	// Verify package file hashes
+	for composerName, hash := range packageHashes {
+		pkgPath := fmt.Sprintf("p/%s$%s.json", composerName, hash)
+		data, ok := writeMap[pkgPath]
+		if !ok {
+			// File might have been hard-linked, read from disk
+			fullPath := filepath.Join(buildDir, pkgPath)
+			diskData, err := os.ReadFile(fullPath)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("package file missing: %s", pkgPath))
+				continue
+			}
+			data = diskData
+		}
+		actualHash := fmt.Sprintf("%x", sha256.Sum256(data))
+		if actualHash != hash {
+			errs = append(errs, fmt.Sprintf("package hash mismatch: %s (declared=%s actual=%s)", composerName, hash, actualHash))
+		}
+	}
+
+	return errs
 }
 
 // ValidateIntegrity checks that all hash references in packages.json resolve to actual files

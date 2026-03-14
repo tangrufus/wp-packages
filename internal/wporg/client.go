@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -27,8 +28,24 @@ type Client struct {
 }
 
 func NewClient(cfg config.DiscoveryConfig, logger *slog.Logger) *Client {
+	concurrency := cfg.Concurrency
+	if concurrency < 10 {
+		concurrency = 10
+	}
+	transport := &http.Transport{
+		MaxIdleConns:        concurrency + 10,
+		MaxIdleConnsPerHost: concurrency,
+		IdleConnTimeout:     90 * time.Second,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+	}
 	return &Client{
-		http:       &http.Client{Timeout: time.Duration(cfg.APITimeoutS) * time.Second},
+		http: &http.Client{
+			Timeout:   time.Duration(cfg.APITimeoutS) * time.Second,
+			Transport: transport,
+		},
 		logger:     logger,
 		maxRetries: cfg.MaxRetries,
 		retryDelay: time.Duration(cfg.RetryDelayMs) * time.Millisecond,

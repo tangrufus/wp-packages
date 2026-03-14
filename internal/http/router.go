@@ -36,9 +36,10 @@ func NewRouter(a *app.App) chi.Router {
 
 	staticSub, _ := fs.Sub(staticFS, "static")
 	staticServer := http.FileServer(http.FS(staticSub))
-	for _, f := range []string{"/favicon.ico", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/manifest.webmanifest", "/carrot.svg", "/kinsta.svg", "/wordpress-com.svg", "/itineris.svg"} {
+	for _, f := range []string{"/favicon.ico", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/manifest.webmanifest"} {
 		r.Get(f, staticServer.ServeHTTP)
 	}
+	r.Get("/assets/*", staticServer.ServeHTTP)
 
 	// Ensure fallback OG image exists (uploads to R2 in production)
 	ensureLocalFallbackOG(a.Config)

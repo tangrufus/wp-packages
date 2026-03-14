@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@source "../templates/**/*.html";
+
+@theme {
+  --color-brand-primary: #525ddc;
+  --color-brand-light: #838ad3;
+  --color-brand-lighter: #c3c7ef;
+  --color-brand-lightest: #ebecf9;
+  --color-brand-navy: #171c56;
+  --font-sans: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+}
+
+@layer components {
+  .select-chevron {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");
+    background-size: 1.25rem;
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+  }
+}

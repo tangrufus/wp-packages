@@ -15,6 +15,13 @@
     group: www-data
     mode: "0775"
 
+- name: Build CSS with Tailwind
+  delegate_to: localhost
+  become: false
+  shell: >
+    cd {{ playbook_dir }}/../.. &&
+    make tailwind
+
 - name: Build Go binary locally
   delegate_to: localhost
   become: false

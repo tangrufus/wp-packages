@@ -1,4 +1,6 @@
 /wpcomposer
+/bin/
+internal/http/static/assets/styles/app.css
 storage/
 *.db
 *.db-wal

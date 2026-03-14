@@ -12,16 +12,10 @@
 <link rel="alternate" type="application/atom+xml" title="WP Composer — Recently Updated Packages" href="/feed.xml">
 {{template "og_meta" .}}
 {{template "json_ld" .}}
-<script src="https://unpkg.com/htmx.org@2.0.4"></script>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>tailwind.config={theme:{extend:{colors:{brand:{primary:'#525ddc',light:'#838ad3',lighter:'#c3c7ef',lightest:'#ebecf9',navy:'#171c56'}},fontFamily:{sans:['Public Sans','ui-sans-serif','system-ui','sans-serif'],mono:['JetBrains Mono','ui-monospace','SFMono-Regular','monospace']}}}}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="dns-prefetch" href="https://unpkg.com">
-<link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
+<link rel="stylesheet" href="/assets/styles/app.css">
+<link rel="stylesheet" href="/assets/styles/fonts.css">
 {{if .CDNURL}}<link rel="preconnect" href="{{.CDNURL}}" crossorigin>{{end}}
-<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<style>html{scroll-behavior:smooth}.select-chevron{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%236b7280'%3E%3Cpath fill-rule='evenodd' d='M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z' clip-rule='evenodd'/%3E%3C/svg%3E");background-size:1.25rem;background-position:right 0.5rem center;background-repeat:no-repeat}</style>
+<script src="/assets/scripts/htmx.min.js"></script>
 <script>
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!e.ctrlKey&&!e.metaKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();const s=document.querySelector('input[name="search"]');if(s)s.focus()}});
 document.addEventListener('htmx:afterRequest',e=>{const xhr=e.detail.xhr;if(!xhr)return;const u=new URL(xhr.responseURL);if(u.pathname==='/packages-partial'){const p=u.searchParams;p.delete('');const q=p.toString();history.pushState(null,'',q?'/?'+q:'/')}});
@@ -52,10 +46,10 @@ roots.io</a>
 <p class="text-sm text-gray-500 max-w-lg mx-auto mb-8 leading-relaxed">WP Composer is community-funded open source. Support our work by <a href="https://github.com/sponsors/roots" class="font-medium text-gray-900 hover:text-brand-primary transition-colors underline underline-offset-4 decoration-gray-300" rel="noopener">sponsoring us on GitHub</a>.</p>
 <p class="text-xs font-medium uppercase tracking-widest text-gray-400/60 mb-6">Sponsors</p>
 <div class="flex flex-wrap items-center justify-center gap-6">
-<a href="https://www.carrot.com/" class="hover:opacity-80 transition-opacity" rel="sponsored"><img src="/carrot.svg" alt="Carrot" class="h-20 w-auto rounded-lg"></a>
-<a href="https://kinsta.com/" class="hover:opacity-80 transition-opacity" rel="sponsored"><img src="/kinsta.svg" alt="Kinsta" class="h-20 w-auto rounded-lg"></a>
-<a href="https://wordpress.com/" class="hover:opacity-80 transition-opacity" rel="sponsored"><img src="/wordpress-com.svg" alt="WordPress.com" class="h-20 w-auto rounded-lg"></a>
-<a href="https://www.itineris.co.uk/" class="hover:opacity-80 transition-opacity" rel="sponsored"><img src="/itineris.svg" alt="Itineris" class="h-20 w-auto rounded-lg"></a>
+<a href="https://www.carrot.com/" class="hover:opacity-80 transition-opacity" rel="sponsored"><img src="/assets/images/carrot.svg" alt="Carrot" class="h-20 w-auto rounded-lg"></a>
+<a href="https://kinsta.com/" class="hover:opacity-80 transition-opacity" rel="sponsored"><img src="/assets/images/kinsta.svg" alt="Kinsta" class="h-20 w-auto rounded-lg"></a>
+<a href="https://wordpress.com/" class="hover:opacity-80 transition-opacity" rel="sponsored"><img src="/assets/images/wordpress-com.svg" alt="WordPress.com" class="h-20 w-auto rounded-lg"></a>
+<a href="https://www.itineris.co.uk/" class="hover:opacity-80 transition-opacity" rel="sponsored"><img src="/assets/images/itineris.svg" alt="Itineris" class="h-20 w-auto rounded-lg"></a>
 </div>
 </div>
 </section>

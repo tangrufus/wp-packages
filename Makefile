@@ -1,7 +1,13 @@
-.PHONY: build install dev test smoke lint clean
+.PHONY: build install dev test smoke lint clean tailwind
+
+TAILWIND ?= ./bin/tailwindcss
+
+# Generate CSS from templates
+tailwind:
+	$(TAILWIND) -i internal/http/tailwind-input.css -o internal/http/static/assets/styles/app.css --minify
 
 # Build the binary
-build:
+build: tailwind
 	go build -o wpcomposer ./cmd/wpcomposer
 
 # Install to $GOPATH/bin

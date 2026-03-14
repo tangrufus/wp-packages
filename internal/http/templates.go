@@ -12,7 +12,7 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
-//go:embed static/*
+//go:embed all:static
 var staticFS embed.FS
 
 var funcMap = template.FuncMap{

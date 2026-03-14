@@ -88,7 +88,7 @@ func SyncToR2(ctx context.Context, cfg config.R2Config, buildDir, buildID, previ
 	// Upload all files under the release prefix (parallel, streaming from disk).
 	var uploaded, copied atomic.Int64
 	g, gCtx := errgroup.WithContext(ctx)
-	g.SetLimit(20)
+	g.SetLimit(50)
 
 	for _, relPath := range filePaths {
 		relPath := relPath

@@ -21,7 +21,7 @@ import (
 	"github.com/roots/wp-composer/internal/og"
 )
 
-const perPage = 24
+const perPage = 12
 
 type packageRow struct {
 	Type                    string

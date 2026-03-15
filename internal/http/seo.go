@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -253,7 +254,8 @@ func handleSitemapPackages(a *app.App, data *sitemapData) http.HandlerFunc {
 			return
 		}
 
-		page, err := strconv.Atoi(chi.URLParam(r, "page"))
+		pageStr := strings.TrimSuffix(chi.URLParam(r, "page"), ".xml")
+		page, err := strconv.Atoi(pageStr)
 		if err != nil || page < 0 {
 			http.NotFound(w, r)
 			return

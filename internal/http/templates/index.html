@@ -67,8 +67,8 @@
 </select>
 <label for="filter-sort" class="sr-only">Sort by</label>
 <select id="filter-sort" name="sort" class="h-10 pl-3 pr-8 text-sm border border-gray-200 rounded-lg bg-white select-chevron focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary">
-<option value="active_installs"{{if eq .Filters.Sort "active_installs"}} selected{{end}}>Active installs</option>
 <option value="composer_installs"{{if eq .Filters.Sort "composer_installs"}} selected{{end}}>Composer installs</option>
+<option value="active_installs"{{if eq .Filters.Sort "active_installs"}} selected{{end}}>Active installs</option>
 <option value="name"{{if eq .Filters.Sort "name"}} selected{{end}}>Name</option>
 <option value="updated"{{if eq .Filters.Sort "updated"}} selected{{end}}>Recently updated</option>
 </select>

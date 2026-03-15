@@ -51,7 +51,7 @@ func handleIndex(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			Sort:   r.URL.Query().Get("sort"),
 		}
 		if filters.Sort == "" {
-			filters.Sort = "downloads"
+			filters.Sort = "composer_installs"
 		}
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page < 1 {
@@ -108,7 +108,7 @@ func handleIndexPartial(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			Sort:   r.URL.Query().Get("sort"),
 		}
 		if filters.Sort == "" {
-			filters.Sort = "downloads"
+			filters.Sort = "composer_installs"
 		}
 		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 		if page < 1 {
@@ -557,10 +557,10 @@ func queryPackages(ctx context.Context, db *sql.DB, f publicFilters, page, limit
 		args = append(args, f.Type)
 	}
 
-	orderBy := "active_installs DESC"
+	orderBy := "wp_composer_installs_total DESC"
 	switch f.Sort {
-	case "composer_installs":
-		orderBy = "wp_composer_installs_total DESC"
+	case "active_installs":
+		orderBy = "active_installs DESC"
 	case "updated":
 		orderBy = "last_committed DESC NULLS LAST"
 	case "name":

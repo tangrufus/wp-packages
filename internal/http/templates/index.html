@@ -60,18 +60,24 @@
 </div>
 <div class="flex items-center gap-2">
 <label for="filter-type" class="sr-only">Package type</label>
-<select id="filter-type" name="type" class="h-10 pl-3 pr-8 text-sm border border-gray-200 rounded-lg bg-white select-chevron focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary">
+<div class="relative">
+<svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"/></svg>
+<select id="filter-type" name="type" class="h-10 pl-9 pr-8 text-sm border border-gray-200 rounded-lg bg-white select-chevron focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary">
 <option value="">All types</option>
 <option value="plugin"{{if eq .Filters.Type "plugin"}} selected{{end}}>Plugins</option>
 <option value="theme"{{if eq .Filters.Type "theme"}} selected{{end}}>Themes</option>
 </select>
+</div>
 <label for="filter-sort" class="sr-only">Sort by</label>
-<select id="filter-sort" name="sort" class="h-10 pl-3 pr-8 text-sm border border-gray-200 rounded-lg bg-white select-chevron focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary">
+<div class="relative">
+<svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5 7.5 3m0 0L12 7.5M7.5 3v13.5m13.5 0L16.5 21m0 0L12 16.5m4.5 4.5V7.5"/></svg>
+<select id="filter-sort" name="sort" class="h-10 pl-9 pr-8 text-sm border border-gray-200 rounded-lg bg-white select-chevron focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary">
 <option value="composer_installs"{{if eq .Filters.Sort "composer_installs"}} selected{{end}}>Composer installs</option>
 <option value="active_installs"{{if eq .Filters.Sort "active_installs"}} selected{{end}}>Active installs</option>
 <option value="name"{{if eq .Filters.Sort "name"}} selected{{end}}>Name</option>
 <option value="updated"{{if eq .Filters.Sort "updated"}} selected{{end}}>Recently updated</option>
 </select>
+</div>
 <button type="submit" class="sr-only">Search</button>
 </div>
 </form>

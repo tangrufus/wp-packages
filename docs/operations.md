@@ -174,14 +174,28 @@ Both layers must pass. A valid Tailscale connection without app auth (or vice ve
 
 ## Server Provisioning
 
-Ansible playbooks handle server setup and application deployment.
+Ansible playbooks handle server setup and application deployment. Playbooks are in `deploy/ansible/`.
 
-Provisioning:
-- Go binary deployment
-- SQLite database initialization
-- Caddy with reverse proxy and TLS/ACME
-- systemd service for `wpcomposer serve`
-- systemd timers for periodic commands
+### Setup
+
+```bash
+cd deploy/ansible
+source .venv/bin/activate
+```
+
+### Provision (full server setup)
+
+```bash
+ansible-playbook provision.yml
+```
+
+Provisions: Go binary, SQLite, Caddy (reverse proxy + TLS), systemd service, systemd timers.
+
+### Deploy (code only)
+
+```bash
+ansible-playbook deploy.yml
+```
 
 ## SQLite Operations
 

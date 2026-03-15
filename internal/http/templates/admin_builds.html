@@ -46,8 +46,8 @@
 </td>
 <td class="px-4 py-2 text-xs font-mono whitespace-nowrap">
 {{if .DurationSeconds}}<span class="text-gray-700">{{formatDuration .DurationSeconds}}</span>{{end}}
-{{if or .DiscoverSeconds .UpdateSeconds .BuildSeconds .DeploySeconds}}
-<span class="text-gray-400 block mt-0.5">{{- if .DiscoverSeconds}}D:{{formatDuration .DiscoverSeconds}} {{end}}{{- if .UpdateSeconds}}U:{{formatDuration .UpdateSeconds}} {{end}}{{- if .BuildSeconds}}B:{{formatDuration .BuildSeconds}} {{end}}{{- if .DeploySeconds}}Dp:{{formatDuration .DeploySeconds}}{{end}}</span>
+{{if or .DiscoverSeconds .UpdateSeconds .BuildSeconds .DeploySeconds .R2UploadSeconds}}
+<span class="text-gray-400 block mt-0.5">{{- if .DiscoverSeconds}}D:{{formatDuration .DiscoverSeconds}} {{end}}{{- if .UpdateSeconds}}U:{{formatDuration .UpdateSeconds}} {{end}}{{- if .BuildSeconds}}B:{{formatDuration .BuildSeconds}} {{end}}{{- if .DeploySeconds}}Dp:{{formatDuration .DeploySeconds}} {{end}}{{- if .R2UploadSeconds}}R2:{{formatDuration .R2UploadSeconds}}{{end}}</span>
 {{end}}
 </td>
 <td class="px-4 py-2">

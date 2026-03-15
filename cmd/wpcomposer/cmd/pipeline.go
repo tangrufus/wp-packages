@@ -108,11 +108,12 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 	d := pipelineStepDurations
 	_, dbErr := application.DB.ExecContext(ctx, `
 		UPDATE builds SET status = 'completed', finished_at = ?, duration_seconds = ?,
-			discover_seconds = ?, update_seconds = ?, build_seconds = ?, deploy_seconds = ?
+			discover_seconds = ?, update_seconds = ?, build_seconds = ?, deploy_seconds = ?,
+			r2_upload_seconds = ?
 		WHERE id = ?`,
 		now.Format(time.RFC3339),
 		int(now.Sub(started).Seconds()),
-		d.Discover, d.Update, d.Build, d.Deploy,
+		d.Discover, d.Update, d.Build, d.Deploy, d.R2Upload,
 		buildID,
 	)
 	if dbErr != nil {
@@ -129,6 +130,7 @@ type stepDurations struct {
 	Update   *int
 	Build    *int
 	Deploy   *int
+	R2Upload *int
 }
 
 // pipelineStepDurations is set by executePipelineSteps so that recordFailedBuild
@@ -171,10 +173,12 @@ func executePipelineSteps(cmd *cobra.Command, ctx context.Context, skipDiscover,
 		application.Logger.Info("pipeline: running deploy")
 		deployCmd.SetContext(ctx)
 		stepStart = time.Now()
-		if err := runDeploy(deployCmd, nil); err != nil {
+		err := runDeploy(deployCmd, nil)
+		pipelineStepDurations.Deploy = intPtr(int(time.Since(stepStart).Seconds()))
+		pipelineStepDurations.R2Upload = deployR2SyncSeconds
+		if err != nil {
 			return fmt.Errorf("deploy: %w", err)
 		}
-		pipelineStepDurations.Deploy = intPtr(int(time.Since(stepStart).Seconds()))
 
 		// Clean up old builds after a successful deploy.
 		repoDir := filepath.Join("storage", "repository")
@@ -202,12 +206,12 @@ func recordFailedBuild(cmd *cobra.Command, started time.Time, pipelineErr error)
 	_, dbErr := application.DB.ExecContext(cmd.Context(), `
 		UPDATE builds SET status = 'failed', finished_at = ?, duration_seconds = ?,
 			error_message = ?, discover_seconds = ?, update_seconds = ?,
-			build_seconds = ?, deploy_seconds = ?
+			build_seconds = ?, deploy_seconds = ?, r2_upload_seconds = ?
 		WHERE id = ?`,
 		now.Format(time.RFC3339),
 		int(now.Sub(started).Seconds()),
 		pipelineErr.Error(),
-		d.Discover, d.Update, d.Build, d.Deploy,
+		d.Discover, d.Update, d.Build, d.Deploy, d.R2Upload,
 		pipelineBuildID,
 	)
 	if dbErr != nil {

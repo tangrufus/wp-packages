@@ -959,12 +959,13 @@ type buildRow struct {
 	UpdateSeconds   *int
 	BuildSeconds    *int
 	DeploySeconds   *int
+	R2UploadSeconds *int
 }
 
 func queryBuilds(ctx context.Context, db *sql.DB) ([]buildRow, error) {
 	rows, err := db.QueryContext(ctx, `SELECT id, started_at, packages_total, packages_changed,
 		artifact_count, status, COALESCE(r2_synced_at, ''), COALESCE(error_message, ''),
-		duration_seconds, discover_seconds, update_seconds, build_seconds, deploy_seconds
+		duration_seconds, discover_seconds, update_seconds, build_seconds, deploy_seconds, r2_upload_seconds
 		FROM builds ORDER BY started_at DESC LIMIT 50`)
 	if err != nil {
 		return nil, err
@@ -976,7 +977,7 @@ func queryBuilds(ctx context.Context, db *sql.DB) ([]buildRow, error) {
 		var b buildRow
 		_ = rows.Scan(&b.ID, &b.StartedAt, &b.PackagesTotal, &b.PackagesChanged,
 			&b.ArtifactCount, &b.Status, &b.R2SyncedAt, &b.ErrorMessage,
-			&b.DurationSeconds, &b.DiscoverSeconds, &b.UpdateSeconds, &b.BuildSeconds, &b.DeploySeconds)
+			&b.DurationSeconds, &b.DiscoverSeconds, &b.UpdateSeconds, &b.BuildSeconds, &b.DeploySeconds, &b.R2UploadSeconds)
 		builds = append(builds, b)
 	}
 	return builds, rows.Err()

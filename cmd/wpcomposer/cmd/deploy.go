@@ -10,6 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// deployR2SyncSeconds captures the last SyncToR2 duration for the current deploy run.
+var deployR2SyncSeconds *int
+
 var deployCmd = &cobra.Command{
 	Use:   "deploy [build-id]",
 	Short: "Promote a build, rollback, or cleanup old builds",
@@ -17,7 +20,25 @@ var deployCmd = &cobra.Command{
 	RunE:  runDeploy,
 }
 
+func secondsPtrSince(start time.Time) *int {
+	v := int(time.Since(start).Seconds())
+	return &v
+}
+
+func syncToR2Timed(cmd *cobra.Command, buildDir, buildID, previousBuildID string) error {
+	started := time.Now()
+	err := deploy.SyncToR2(cmd.Context(), application.Config.R2, buildDir, buildID, previousBuildID, application.Logger)
+	deployR2SyncSeconds = secondsPtrSince(started)
+	if err != nil {
+		return fmt.Errorf("R2 sync failed: %w", err)
+	}
+	recordR2Sync(cmd, buildID)
+	return nil
+}
+
 func runDeploy(cmd *cobra.Command, args []string) error {
+	deployR2SyncSeconds = nil
+
 	repoDir := filepath.Join("storage", "repository")
 	cleanup, _ := cmd.Flags().GetBool("cleanup")
 	toR2, _ := cmd.Flags().GetBool("to-r2")
@@ -78,10 +99,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 		// Sync to R2 first, then promote locally
 		if toR2 || application.Config.R2.Enabled {
-			if err := deploy.SyncToR2(cmd.Context(), application.Config.R2, buildDir, target, previousBuildID, application.Logger); err != nil {
-				return fmt.Errorf("R2 sync failed: %w", err)
+			if err := syncToR2Timed(cmd, buildDir, target, previousBuildID); err != nil {
+				return err
 			}
-			recordR2Sync(cmd, target)
 		}
 
 		if _, err := deploy.Rollback(repoDir, target, application.Logger); err != nil {
@@ -110,10 +130,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	// Sync to R2 first, then promote locally
 	if toR2 || application.Config.R2.Enabled {
-		if err := deploy.SyncToR2(cmd.Context(), application.Config.R2, buildDir, buildID, previousBuildID, application.Logger); err != nil {
-			return fmt.Errorf("R2 sync failed: %w", err)
+		if err := syncToR2Timed(cmd, buildDir, buildID, previousBuildID); err != nil {
+			return err
 		}
-		recordR2Sync(cmd, buildID)
 	}
 
 	if err := deploy.Promote(repoDir, buildID, application.Logger); err != nil {

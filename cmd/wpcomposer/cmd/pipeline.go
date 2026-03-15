@@ -104,6 +104,21 @@ func runPipeline(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	now := time.Now().UTC()
+	d := pipelineStepDurations
+	_, dbErr := application.DB.ExecContext(ctx, `
+		UPDATE builds SET status = 'completed', finished_at = ?, duration_seconds = ?,
+			discover_seconds = ?, update_seconds = ?, build_seconds = ?, deploy_seconds = ?
+		WHERE id = ?`,
+		now.Format(time.RFC3339),
+		int(now.Sub(started).Seconds()),
+		d.Discover, d.Update, d.Build, d.Deploy,
+		buildID,
+	)
+	if dbErr != nil {
+		application.Logger.Warn("failed to record completed build", "error", dbErr)
+	}
+
 	application.Logger.Info("pipeline: complete")
 	return nil
 }

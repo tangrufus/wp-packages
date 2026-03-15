@@ -52,18 +52,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	// exists with status "running" — update it. Otherwise insert a new row.
 	var dbErr error
 	if pipelineBuildID != "" {
-		d := pipelineStepDurations
+		// Only write build metrics here. Step durations are written by
+		// runPipeline after all steps (including deploy) have completed.
 		_, dbErr = application.DB.ExecContext(cmd.Context(), `
-			UPDATE builds SET finished_at = ?, duration_seconds = ?,
+			UPDATE builds SET
 				packages_total = ?, packages_changed = ?, packages_skipped = ?,
 				provider_groups = ?, artifact_count = ?, root_hash = ?,
-				sync_run_id = ?, status = 'completed',
-				manifest_json = ?,
-				discover_seconds = ?, update_seconds = ?,
-				build_seconds = ?, deploy_seconds = ?
+				sync_run_id = ?, manifest_json = ?
 			WHERE id = ?`,
-			result.FinishedAt.Format(time.RFC3339),
-			result.DurationSeconds,
 			result.PackagesTotal,
 			result.PackagesChanged,
 			result.PackagesSkipped,
@@ -72,7 +68,6 @@ func runBuild(cmd *cobra.Command, args []string) error {
 			result.RootHash,
 			result.SyncRunID,
 			fmt.Sprintf(`{"root_hash":"%s"}`, result.RootHash),
-			d.Discover, d.Update, d.Build, d.Deploy,
 			pipelineBuildID,
 		)
 	} else {

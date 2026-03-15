@@ -74,7 +74,7 @@ jq --indent "$INDENT" '
     {
       "name": "wp-composer",
       "type": "composer",
-      "url": "https://wp-composer.com",
+      "url": "https://repo.wp-composer.com",
       "only": ["wp-plugin/*", "wp-theme/*"]
     };
 

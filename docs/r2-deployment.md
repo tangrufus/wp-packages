@@ -2,24 +2,22 @@
 
 WP Composer deploys built repository artifacts to Cloudflare R2 for serving via CDN. Builds are generated locally (fast filesystem I/O), then synced to R2 on deploy.
 
-## Versioned Deploy Model
+## Shared Deploy Model
 
-Content-addressed `p/` files (containing `$` in the filename) are stored once in a shared top-level prefix and never re-uploaded. Per-release files (`p2/`, `packages.json`, `manifest.json`) go under an immutable release prefix. The only mutable object in the bucket is the root `packages.json`, which acts as an atomic pointer to the current release.
+Both `p/` and `p2/` files are stored at shared top-level prefixes. Content-addressed `p/` files (containing `$`) are immutable and uploaded once ever. Mutable `p2/` files are overwritten in place when packages change. Only per-release index files (`packages.json`, `manifest.json`) go under a release prefix. The root `packages.json` acts as an atomic pointer identifying the current build.
 
 ```
-packages.json                                        ← atomic pointer (only mutable object)
+packages.json                                        ← atomic pointer (build-id + URLs)
 p/wp-plugin/akismet$abc123.json                      ← shared, uploaded once ever (immutable)
 p/providers-week$def456.json                         ← shared, uploaded once ever (immutable)
+p2/wp-plugin/akismet.json                            ← shared, overwritten when changed
 releases/20260314-150405/packages.json               ← per-release snapshot (immutable)
 releases/20260314-150405/manifest.json               ← per-release (immutable)
-releases/20260314-150405/p2/wp-plugin/akismet.json   ← per-release (immutable)
 ```
 
-Since ~95% of files are content-addressed and identical across releases, the deploy diffs the current build against the previous build locally and only uploads new shared files. This reduces R2 operations from ~140k to ~2-5k (only new `p/` files + all `p2/` files + indexes), with zero R2 calls for unchanged files.
+The deploy diffs the current build against the previous build locally. Content-addressed `p/` files present in both builds are skipped (zero R2 ops). Mutable `p2/` files are byte-compared and only uploaded if changed. This reduces R2 operations from ~140k to only the number of changed packages per build.
 
-On the first deploy with this layout (upgrading from the old release-prefixed model, or no previous build), all shared `p/` files are uploaded. The deploy detects this by reading the current root `packages.json` from R2 — if `providers-url` still points into `releases/`, the shared prefix doesn't exist yet and the local diff is bypassed. Subsequent deploys benefit from the local diff immediately.
-
-The root `packages.json` is rewritten on each deploy so that `metadata-url` points into the new release prefix. `providers-url` and `provider-includes` point at the shared top-level `p/` prefix. This single PUT is the atomic switch — clients either see the old release or the new one, never a mix.
+On the first deploy with this layout (upgrading from the old release-prefixed model, or no previous build), all files are uploaded. The deploy detects this by reading the current root `packages.json` from R2 — if `providers-url` still points into `releases/`, the shared prefix doesn't exist yet and the local diff is bypassed.
 
 ## Prerequisites
 
@@ -68,8 +66,8 @@ Find your account ID in the Cloudflare dashboard under **R2 > Overview**.
 When deploying to R2 (`wpcomposer deploy --to-r2`):
 
 1. Validates the build (packages.json and manifest.json must exist).
-2. Diffs shared `p/` files against the previous build directory to find new content-addressed files. Uploads only new `p/` files to the shared top-level prefix (zero R2 ops for unchanged files). Uploads per-release files (`p2/`, indexes) under `releases/<build-id>/`. Each upload retries up to 3 times with exponential backoff.
-3. Rewrites `packages.json`: `metadata-url` points into the release prefix; `providers-url` and `provider-includes` point at the shared `p/` prefix.
+2. Diffs all files against the previous build directory. Content-addressed `p/` files present in both builds are skipped. Mutable `p2/` files are byte-compared and only uploaded if changed. Per-release index files (`packages.json`, `manifest.json`) are always uploaded under `releases/<build-id>/`. Each upload retries up to 3 times with exponential backoff.
+3. Rewrites `packages.json` with the build ID embedded. All URL templates point at shared top-level prefixes.
 4. Uploads the rewritten `packages.json` as the root — the atomic switch.
 5. Promotes the local build symlink (for rollback capability).
 
@@ -86,14 +84,16 @@ When using a Cloudflare custom domain on the R2 bucket, cache behavior is contro
 | `packages.json` (root) | `max-age=300` | Atomic pointer, only mutable object |
 | `releases/*` (everything) | `max-age=31536000, immutable` | Entire release prefix is immutable |
 | `p/*$hash.json` (shared) | `max-age=31536000, immutable` | Content-addressed, never changes |
+| `p2/*.json` (shared) | `max-age=300` | Mutable, overwritten on package changes |
 
 ## URL Requirements
 
-The generated root `packages.json` on R2 contains prefixed URLs pointing into the current release:
+The generated root `packages.json` on R2 contains unprefixed URLs pointing at shared top-level prefixes:
 
-- `metadata-url`: `/releases/<build-id>/p2/%package%.json` (per-release)
-- `providers-url`: `/p/%package%$%hash%.json` (shared, not prefixed)
-- `provider-includes` keys: `p/providers-*$hash.json` (shared, not prefixed)
+- `metadata-url`: `/p2/%package%.json` (shared, overwritten in place)
+- `providers-url`: `/p/%package%$%hash%.json` (shared, content-addressed)
+- `provider-includes` keys: `p/providers-*$hash.json` (shared, content-addressed)
+- `build-id`: the current build ID (used by cleanup to identify the live release)
 - `notify-batch`: absolute URL pointing to the **app domain** (not R2, not rewritten)
 
 ## AWS CLI Setup (Manual Operations)
@@ -136,20 +136,20 @@ wpcomposer deploy --cleanup --r2-cleanup
 wpcomposer deploy --cleanup --r2-cleanup --grace-hours 6
 ```
 
-`--r2-cleanup` is required — plain `--cleanup` only removes local build directories. The cleanup reads R2 state directly (no local filesystem dependency), identifies release prefixes, and deletes those outside the keep set. It also deletes legacy flat files (anything not under `releases/` except root `packages.json` and shared content-addressed `p/` files). Shared `p/` files are preserved — GC of orphaned shared files is deferred to a future release.
+`--r2-cleanup` is required — plain `--cleanup` only removes local build directories. The cleanup reads R2 state directly (no local filesystem dependency), identifies release prefixes, and deletes those outside the keep set. It also deletes legacy flat files (anything not under `releases/`, `p/`, or `p2/`, except root `packages.json`). Shared `p/` and `p2/` files are preserved — GC of orphaned shared files is deferred to a future release.
 
 The keep set is: live release (from root `packages.json`) + releases within `--grace-hours` + top `--retain` most recent. The retain count has a hard minimum of 5 — even if `--retain` is set lower, at least 5 recent releases are always preserved.
 
 ## Rollback
 
-Rollback re-syncs the target build to R2 under its release prefix and rewrites the root `packages.json` pointer:
+Rollback is a regular incremental deploy of the target build — it diffs the target build's files against the currently deployed build and uploads only changed `p/` and `p2/` files:
 
 ```bash
 wpcomposer deploy --rollback --to-r2
 wpcomposer deploy --rollback=20260313-130000 --to-r2
 ```
 
-If the target release prefix still exists on R2 from a previous deploy, the upload is idempotent. The key operation is the root `packages.json` rewrite pointing back to the old release.
+Rollback takes roughly the same time as a normal deploy (proportional to the number of changed files).
 
 ## Local-Only Mode
 
@@ -160,9 +160,9 @@ When `WP_COMPOSER_DEPLOY_R2` is unset or `false`, deploy only updates the local 
 After deploy, verify the bucket:
 
 ```bash
-# Check root packages.json has prefixed URLs
-curl -s https://repo.wp-composer.com/packages.json | jq '.["metadata-url"]'
+# Check root packages.json has build-id and unprefixed URLs
+curl -s https://repo.wp-composer.com/packages.json | jq '.["build-id"], .["metadata-url"]'
 
-# Check a specific package through the release prefix
-curl -s https://repo.wp-composer.com/releases/20260314-150405/p2/wp-plugin/akismet.json | head -c 200
+# Check a specific package at the shared p2/ prefix
+curl -s https://repo.wp-composer.com/p2/wp-plugin/akismet.json | head -c 200
 ```

@@ -58,11 +58,13 @@ func (f *fakeR2) DeleteObjects(_ context.Context, input *s3.DeleteObjectsInput, 
 	return &s3.DeleteObjectsOutput{}, nil
 }
 
-// versionedRootJSON builds a root packages.json pointing at the given release.
-// metadata-url is prefixed (per-release p2/); providers-url is unprefixed (shared p/).
+// versionedRootJSON builds a root packages.json with the new shared layout.
+// Both metadata-url and providers-url are unprefixed (shared top-level).
+// build-id identifies the live release for cleanup.
 func versionedRootJSON(buildID string) []byte {
 	data, _ := json.Marshal(map[string]any{
-		"metadata-url":  "/releases/" + buildID + "/p2/%package%.json",
+		"build-id":      buildID,
+		"metadata-url":  "/p2/%package%.json",
 		"providers-url": "/p/%package%$%hash%.json",
 	})
 	return data
@@ -205,9 +207,9 @@ func TestRewritePackagesJSON(t *testing.T) {
 	}
 
 	inputJSON, _ := json.Marshal(input)
-	prefix := "releases/20260314-150405/"
+	buildID := "20260314-150405"
 
-	result, err := RewritePackagesJSON(inputJSON, prefix)
+	result, err := RewritePackagesJSON(inputJSON, buildID)
 	if err != nil {
 		t.Fatalf("RewritePackagesJSON: %v", err)
 	}
@@ -217,19 +219,19 @@ func TestRewritePackagesJSON(t *testing.T) {
 		t.Fatalf("unmarshal result: %v", err)
 	}
 
-	// Check metadata-url rewritten (per-release).
-	wantMeta := "/releases/20260314-150405/p2/%package%.json"
+	// Check metadata-url NOT rewritten (shared top-level p2/).
+	wantMeta := "/p2/%package%.json"
 	if got["metadata-url"] != wantMeta {
 		t.Errorf("metadata-url = %q, want %q", got["metadata-url"], wantMeta)
 	}
 
-	// Check providers-url NOT rewritten (shared content-addressed store).
+	// Check providers-url NOT rewritten (shared top-level p/).
 	wantProv := "/p/%package%$%hash%.json"
 	if got["providers-url"] != wantProv {
 		t.Errorf("providers-url = %q, want %q", got["providers-url"], wantProv)
 	}
 
-	// Check provider-includes keys NOT rewritten (shared content-addressed store).
+	// Check provider-includes keys NOT rewritten.
 	pi, ok := got["provider-includes"].(map[string]any)
 	if !ok {
 		t.Fatal("provider-includes not a map")
@@ -241,6 +243,11 @@ func TestRewritePackagesJSON(t *testing.T) {
 	}
 	if len(pi) != 2 {
 		t.Errorf("provider-includes has %d keys, want 2", len(pi))
+	}
+
+	// Check build-id embedded.
+	if got["build-id"] != buildID {
+		t.Errorf("build-id = %q, want %q", got["build-id"], buildID)
 	}
 
 	// Check notify-batch NOT rewritten.
@@ -347,19 +354,18 @@ func TestCleanupSkipsLegacyFilesWhenRootNotVersioned(t *testing.T) {
 }
 
 func TestCleanupDeletesLegacyFilesWhenRootIsVersioned(t *testing.T) {
-	// Root packages.json points at a release prefix — legacy flat files should be cleaned up,
-	// but shared content-addressed p/ files should NOT be deleted (they're part of the new layout).
+	// Root packages.json uses new layout — shared p/ and p2/ files should NOT be deleted.
+	// Only true legacy files (e.g. flat manifest.json) should be cleaned up.
 	liveID := "20260314-150000"
 	fake := &fakeR2{
 		objects: map[string][]byte{
-			"packages.json":                               versionedRootJSON(liveID),
-			"releases/" + liveID + "/packages.json":       []byte(`{}`),
-			"releases/" + liveID + "/p2/wp-plugin/a.json": []byte(`{}`),
-			// Legacy flat files — should be deleted.
-			"p2/wp-plugin/akismet.json": []byte(`{}`),
-			"manifest.json":             []byte(`{}`),
-			// Shared content-addressed p/ file — should NOT be deleted.
+			"packages.json":                         versionedRootJSON(liveID),
+			"releases/" + liveID + "/packages.json": []byte(`{}`),
+			// Shared files — should NOT be deleted.
+			"p2/wp-plugin/akismet.json":    []byte(`{}`),
 			"p/wp-plugin/akismet$abc.json": []byte(`{}`),
+			// Legacy flat file — should be deleted.
+			"manifest.json": []byte(`{}`),
 		},
 	}
 
@@ -367,17 +373,17 @@ func TestCleanupDeletesLegacyFilesWhenRootIsVersioned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cleanupR2: %v", err)
 	}
-	if deleted != 2 {
-		t.Errorf("expected 2 legacy deletions (not shared p/ files), got %d", deleted)
+	if deleted != 1 {
+		t.Errorf("expected 1 legacy deletion (manifest.json only), got %d", deleted)
 	}
 
-	// Live release files must NOT be deleted.
+	// Shared files must NOT be deleted.
 	for _, key := range fake.deletedKeys {
 		if strings.HasPrefix(key, "releases/"+liveID+"/") {
 			t.Errorf("live release file deleted: %s", key)
 		}
-		if strings.HasPrefix(key, "p/") && strings.Contains(key, "$") {
-			t.Errorf("shared content-addressed file deleted: %s", key)
+		if strings.HasPrefix(key, "p/") || strings.HasPrefix(key, "p2/") {
+			t.Errorf("shared file deleted: %s", key)
 		}
 	}
 }

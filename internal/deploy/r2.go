@@ -327,13 +327,14 @@ func cleanupR2(ctx context.Context, client r2API, bucket string, graceHours, ret
 	// refuse to proceed — we might delete the active release.
 	// (This is checked after listing, but we capture the result now.)
 
-	// List all objects and group by release prefix.
+	// List only objects under releases/ prefix — shared p/ and p2/ files at the
+	// top level are not managed by cleanup.
 	releaseObjects := make(map[string][]string) // buildID -> list of keys
-	var legacyKeys []string
 	var continuationToken *string
 	for {
 		input := &s3.ListObjectsV2Input{
 			Bucket:            aws.String(bucket),
+			Prefix:            aws.String("releases/"),
 			ContinuationToken: continuationToken,
 		}
 		resp, err := client.ListObjectsV2(ctx, input)
@@ -343,15 +344,9 @@ func cleanupR2(ctx context.Context, client r2API, bucket string, graceHours, ret
 
 		for _, obj := range resp.Contents {
 			key := aws.ToString(obj.Key)
-			if strings.HasPrefix(key, "releases/") {
-				parts := strings.SplitN(strings.TrimPrefix(key, "releases/"), "/", 2)
-				if len(parts) >= 1 && parts[0] != "" {
-					releaseObjects[parts[0]] = append(releaseObjects[parts[0]], key)
-				}
-			} else if key != r2IndexFile && !isSharedFile(key) && !strings.HasPrefix(key, "p2/") {
-				// Shared p/ and p2/ files are not legacy — they're part of the
-				// new layout. Only collect non-shared, non-root files.
-				legacyKeys = append(legacyKeys, key)
+			parts := strings.SplitN(strings.TrimPrefix(key, "releases/"), "/", 2)
+			if len(parts) >= 1 && parts[0] != "" {
+				releaseObjects[parts[0]] = append(releaseObjects[parts[0]], key)
 			}
 		}
 
@@ -361,7 +356,7 @@ func cleanupR2(ctx context.Context, client r2API, bucket string, graceHours, ret
 		continuationToken = resp.NextContinuationToken
 	}
 
-	if len(releaseObjects) == 0 && len(legacyKeys) == 0 {
+	if len(releaseObjects) == 0 {
 		logger.Info("R2 cleanup: nothing to clean")
 		return 0, nil
 	}
@@ -369,15 +364,13 @@ func cleanupR2(ctx context.Context, client r2API, bucket string, graceHours, ret
 	// Safety: if there are release prefixes on R2 but we couldn't identify the
 	// live one, refuse to delete anything — a transient read failure could cause
 	// us to delete the active release.
-	if len(releaseObjects) > 0 && live.buildID == "" {
+	if live.buildID == "" {
 		return 0, fmt.Errorf("release prefixes exist on R2 but live release could not be identified — refusing to clean")
 	}
 
 	// Build the keep set: live release + within grace period + top N recent.
 	keep := make(map[string]bool)
-	if live.buildID != "" {
-		keep[live.buildID] = true
-	}
+	keep[live.buildID] = true
 
 	graceCutoff := time.Now().Add(-time.Duration(graceHours) * time.Hour)
 
@@ -404,7 +397,7 @@ func cleanupR2(ctx context.Context, client r2API, bucket string, graceHours, ret
 		}
 	}
 
-	// Collect keys to delete: stale releases + legacy flat files.
+	// Collect keys to delete from stale releases.
 	var toDelete []s3types.ObjectIdentifier
 	for id, keys := range releaseObjects {
 		if keep[id] {
@@ -413,18 +406,6 @@ func cleanupR2(ctx context.Context, client r2API, bucket string, graceHours, ret
 		for _, key := range keys {
 			toDelete = append(toDelete, s3types.ObjectIdentifier{Key: aws.String(key)})
 		}
-	}
-
-	// Only delete legacy flat files if the root packages.json already points at a
-	// versioned release prefix. If the bucket is still using flat-path layout
-	// (pre-versioned deploy), these files are still live — don't touch them.
-	if live.isVersioned && len(legacyKeys) > 0 {
-		logger.Info("R2 cleanup: deleting legacy flat files", "count", len(legacyKeys))
-		for _, key := range legacyKeys {
-			toDelete = append(toDelete, s3types.ObjectIdentifier{Key: aws.String(key)})
-		}
-	} else if len(legacyKeys) > 0 {
-		logger.Info("R2 cleanup: skipping legacy flat files (root not yet versioned)", "count", len(legacyKeys))
 	}
 
 	if len(toDelete) == 0 {

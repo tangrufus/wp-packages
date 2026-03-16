@@ -39,9 +39,12 @@ func (f *fakeR2) GetObject(_ context.Context, input *s3.GetObjectInput, _ ...fun
 }
 
 func (f *fakeR2) ListObjectsV2(_ context.Context, input *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	prefix := aws.ToString(input.Prefix)
 	var contents []s3types.Object
 	for key := range f.objects {
-		contents = append(contents, s3types.Object{Key: aws.String(key)})
+		if prefix == "" || strings.HasPrefix(key, prefix) {
+			contents = append(contents, s3types.Object{Key: aws.String(key)})
+		}
 	}
 	return &s3.ListObjectsV2Output{
 		Contents:    contents,
@@ -329,12 +332,15 @@ func TestCleanupRefusesWhenLiveReleaseUnknown(t *testing.T) {
 	}
 }
 
-func TestCleanupSkipsLegacyFilesWhenRootNotVersioned(t *testing.T) {
-	// Bucket has legacy flat files and no release prefixes.
-	// Root packages.json uses flat-path layout — legacy files must NOT be deleted.
+func TestCleanupIgnoresNonReleaseFiles(t *testing.T) {
+	// Cleanup only lists releases/ prefix — shared p/, p2/, and other
+	// top-level files are never seen or deleted.
+	liveID := "20260314-150000"
 	fake := &fakeR2{
 		objects: map[string][]byte{
-			"packages.json":                flatRootJSON(),
+			"packages.json":                         versionedRootJSON(liveID),
+			"releases/" + liveID + "/packages.json": []byte(`{}`),
+			// These exist in the bucket but cleanup never lists them.
 			"p2/wp-plugin/akismet.json":    []byte(`{}`),
 			"p/wp-plugin/akismet$abc.json": []byte(`{}`),
 			"manifest.json":                []byte(`{}`),
@@ -346,45 +352,10 @@ func TestCleanupSkipsLegacyFilesWhenRootNotVersioned(t *testing.T) {
 		t.Fatalf("cleanupR2: %v", err)
 	}
 	if deleted != 0 {
-		t.Errorf("expected 0 deletions when root is not versioned, got %d", deleted)
+		t.Errorf("expected 0 deletions (only live release exists), got %d", deleted)
 	}
 	if len(fake.deletedKeys) > 0 {
-		t.Errorf("legacy files should not be deleted: %v", fake.deletedKeys)
-	}
-}
-
-func TestCleanupDeletesLegacyFilesWhenRootIsVersioned(t *testing.T) {
-	// Root packages.json uses new layout — shared p/ and p2/ files should NOT be deleted.
-	// Only true legacy files (e.g. flat manifest.json) should be cleaned up.
-	liveID := "20260314-150000"
-	fake := &fakeR2{
-		objects: map[string][]byte{
-			"packages.json":                         versionedRootJSON(liveID),
-			"releases/" + liveID + "/packages.json": []byte(`{}`),
-			// Shared files — should NOT be deleted.
-			"p2/wp-plugin/akismet.json":    []byte(`{}`),
-			"p/wp-plugin/akismet$abc.json": []byte(`{}`),
-			// Legacy flat file — should be deleted.
-			"manifest.json": []byte(`{}`),
-		},
-	}
-
-	deleted, err := cleanupR2(context.Background(), fake, "test-bucket", 0, 1, slog.Default())
-	if err != nil {
-		t.Fatalf("cleanupR2: %v", err)
-	}
-	if deleted != 1 {
-		t.Errorf("expected 1 legacy deletion (manifest.json only), got %d", deleted)
-	}
-
-	// Shared files must NOT be deleted.
-	for _, key := range fake.deletedKeys {
-		if strings.HasPrefix(key, "releases/"+liveID+"/") {
-			t.Errorf("live release file deleted: %s", key)
-		}
-		if strings.HasPrefix(key, "p/") || strings.HasPrefix(key, "p2/") {
-			t.Errorf("shared file deleted: %s", key)
-		}
+		t.Errorf("nothing should be deleted: %v", fake.deletedKeys)
 	}
 }
 

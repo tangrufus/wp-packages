@@ -1,7 +1,6 @@
 package http
 
 import (
-	"cmp"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -26,6 +25,7 @@ import (
 	"github.com/roots/wp-composer/internal/config"
 	"github.com/roots/wp-composer/internal/deploy"
 	"github.com/roots/wp-composer/internal/og"
+	"github.com/roots/wp-composer/internal/version"
 )
 
 const perPage = 12
@@ -842,33 +842,9 @@ func parseVersions(pkg *packageDetail) []versionRow {
 			}
 			return 1
 		}
-		return compareVersions(b.Version, a.Version)
+		return version.Compare(b.Version, a.Version)
 	})
 	return rows
-}
-
-// compareVersions compares two version strings numerically by segment.
-// Returns -1, 0, or 1.
-func compareVersions(a, b string) int {
-	aParts := strings.Split(a, ".")
-	bParts := strings.Split(b, ".")
-	maxLen := len(aParts)
-	if len(bParts) > maxLen {
-		maxLen = len(bParts)
-	}
-	for i := range maxLen {
-		var av, bv int
-		if i < len(aParts) {
-			av, _ = strconv.Atoi(aParts[i])
-		}
-		if i < len(bParts) {
-			bv, _ = strconv.Atoi(bParts[i])
-		}
-		if c := cmp.Compare(av, bv); c != 0 {
-			return c
-		}
-	}
-	return 0
 }
 
 func queryDashboardStats(ctx context.Context, db *sql.DB) map[string]any {

@@ -1,7 +1,9 @@
 package version
 
 import (
+	"cmp"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -48,4 +50,43 @@ func NormalizeVersions(versions map[string]string) map[string]string {
 		}
 	}
 	return result
+}
+
+// Compare compares two version strings numerically by segment.
+// Returns -1, 0, or 1.
+func Compare(a, b string) int {
+	aParts := strings.Split(a, ".")
+	bParts := strings.Split(b, ".")
+	maxLen := len(aParts)
+	if len(bParts) > maxLen {
+		maxLen = len(bParts)
+	}
+	for i := range maxLen {
+		var av, bv int
+		if i < len(aParts) {
+			av, _ = strconv.Atoi(aParts[i])
+		}
+		if i < len(bParts) {
+			bv, _ = strconv.Atoi(bParts[i])
+		}
+		if c := cmp.Compare(av, bv); c != 0 {
+			return c
+		}
+	}
+	return 0
+}
+
+// Latest returns the highest version from a map of version -> download URL,
+// excluding dev-trunk. Returns empty string if no versions are present.
+func Latest(versions map[string]string) string {
+	var latest string
+	for v := range versions {
+		if v == "dev-trunk" {
+			continue
+		}
+		if latest == "" || Compare(v, latest) > 0 {
+			latest = v
+		}
+	}
+	return latest
 }

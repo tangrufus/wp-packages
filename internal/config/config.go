@@ -30,9 +30,7 @@ type DBConfig struct {
 }
 
 type ServerConfig struct {
-	Addr           string   `yaml:"addr"`
-	AdminAllowCIDR []string `yaml:"admin_allow_cidr"`
-	TrustProxy     bool     `yaml:"trust_proxy"`
+	Addr string `yaml:"addr"`
 }
 
 type R2Config struct {
@@ -68,8 +66,7 @@ func defaults() *Config {
 		LogLevel: "info",
 		DB:       DBConfig{Path: "./storage/wpcomposer.db"},
 		Server: ServerConfig{
-			Addr:           ":8080",
-			AdminAllowCIDR: []string{"100.64.0.0/10", "fd7a:115c:a1e0::/48"}, // Tailscale default ranges
+			Addr: ":8080",
 		},
 		Session: SessionConfig{LifetimeMinutes: 7200},
 		Telemetry: TelemetryConfig{
@@ -154,16 +151,6 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("TELEMETRY_DEDUPE_WINDOW_SECONDS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.Telemetry.DedupeWindowSeconds = n
-		}
-	}
-	if v := os.Getenv("TRUST_PROXY"); v != "" {
-		cfg.Server.TrustProxy = strings.EqualFold(v, "true") || v == "1"
-	}
-	if v, ok := os.LookupEnv("ADMIN_ALLOW_CIDR"); ok {
-		if v == "" {
-			cfg.Server.AdminAllowCIDR = nil // explicitly disable restriction
-		} else {
-			cfg.Server.AdminAllowCIDR = strings.Split(v, ",")
 		}
 	}
 	if v := os.Getenv("SEEDS_FILE"); v != "" {

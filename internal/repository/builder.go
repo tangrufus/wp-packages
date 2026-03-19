@@ -189,9 +189,11 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 			prevData, err := os.ReadFile(filepath.Join(opts.PreviousBuildDir, p2Rel))
 			if err != nil || !bytes.Equal(prevData, data) {
 				changedPkgs++
+				opts.Logger.Info("package changed", "package", composerName)
 			}
 		} else {
 			changedPkgs++
+			opts.Logger.Info("package changed", "package", composerName)
 		}
 
 		if totalPkgs%500 == 0 {

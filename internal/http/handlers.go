@@ -29,6 +29,10 @@ import (
 
 const perPage = 12
 
+// ogSem limits concurrent OG image generation to avoid starving the pipeline
+// of DB write access under heavy crawler traffic.
+var ogSem = make(chan struct{}, 2)
+
 // captureError reports a non-panic error to Sentry with the request's hub.
 // It silently ignores context cancellation errors (timeouts, client disconnects)
 // since these are expected during normal operation.
@@ -223,8 +227,15 @@ func handleDetail(a *app.App, tmpl *templateSet) http.HandlerFunc {
 
 		ogKey := "social/" + pkg.Type + "/" + pkg.Name + ".png"
 		if pkg.OGImageGeneratedAt == nil {
-			// Generate on demand in background
-			go generatePackageOG(a, pkg)
+			// Generate on demand in background (skip if at capacity)
+			select {
+			case ogSem <- struct{}{}:
+				go func() {
+					defer func() { <-ogSem }()
+					generatePackageOG(a, pkg)
+				}()
+			default:
+			}
 		}
 
 		displayName := pkg.Name

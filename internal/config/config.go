@@ -141,7 +141,7 @@ func applyEnv(cfg *Config) {
 	if v := os.Getenv("R2_ENDPOINT"); v != "" {
 		cfg.R2.Endpoint = v
 	}
-	if v := os.Getenv("WP_COMPOSER_DEPLOY_R2"); v != "" {
+	if v := os.Getenv("WP_PACKAGES_DEPLOY_R2"); v != "" {
 		cfg.R2.Enabled = strings.EqualFold(v, "true") || v == "1"
 	}
 	if v := os.Getenv("R2_CDN_BUCKET"); v != "" {

@@ -23,13 +23,22 @@ type PackageOGRow struct {
 	OGImageWpInstalls       int64
 }
 
-// FormatInstalls returns a human-readable install count.
+// FormatInstalls returns a human-readable install count with rounding
+// to reduce unnecessary OG image regeneration when counts change slightly.
 func FormatInstalls(n int64) string {
 	if n >= 1_000_000 {
 		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
 	}
 	if n >= 1_000 {
 		return fmt.Sprintf("%.0fK", float64(n)/1_000)
+	}
+	if n >= 100 {
+		rounded := (n / 100) * 100
+		return fmt.Sprintf("%d+", rounded)
+	}
+	if n >= 10 {
+		rounded := (n / 10) * 10
+		return fmt.Sprintf("%d+", rounded)
 	}
 	return fmt.Sprintf("%d", n)
 }
@@ -123,6 +132,14 @@ func GenerateAll(ctx context.Context, db *sql.DB, uploader *Uploader, limit int,
 	for _, pkg := range pkgs {
 		if ctx.Err() != nil {
 			return result, ctx.Err()
+		}
+
+		// Skip if the formatted display values haven't changed
+		if pkg.OGImageGeneratedAt != nil &&
+			FormatInstalls(pkg.ActiveInstalls) == FormatInstalls(pkg.OGImageInstalls) &&
+			FormatInstalls(pkg.WpPackagesInstallsTotal) == FormatInstalls(pkg.OGImageWpInstalls) {
+			result.Skipped++
+			continue
 		}
 
 		data := PackageData{

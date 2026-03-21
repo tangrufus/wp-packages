@@ -285,7 +285,7 @@ The systemd service runs:
 litestream replicate -config /srv/wp-packages/shared/litestream.yml -exec "wppackages serve ..."
 ```
 
-WAL segments are uploaded to R2 continuously. A full snapshot is taken every 24 hours (Litestream default).
+WAL segments are uploaded to R2 every 60 seconds. A full snapshot is taken every 24 hours. Segments older than 24 hours are automatically purged.
 
 ### Restore locally
 

@@ -146,8 +146,11 @@ func TestWpOrgLive(t *testing.T) {
 		if err := json.Unmarshal([]byte(body), &pkgJSON); err != nil {
 			t.Fatalf("invalid packages.json: %v", err)
 		}
-		if _, ok := pkgJSON["provider-includes"]; !ok {
-			t.Error("missing provider-includes")
+		if _, ok := pkgJSON["provider-includes"]; ok {
+			t.Error("packages.json should not contain provider-includes")
+		}
+		if _, ok := pkgJSON["providers-url"]; ok {
+			t.Error("packages.json should not contain providers-url")
 		}
 	})
 

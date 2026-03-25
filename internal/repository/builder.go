@@ -141,16 +141,10 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 			opts.Logger.Warn("skipping package with invalid versions_json", "name", name, "error", err)
 			continue
 		}
-		if len(versions) == 0 {
-			continue
-		}
-
 		// Defense-in-depth: re-filter versions through normalization so stale
 		// DB rows with invalid versions (e.g. "3.1.0-dev1") never reach artifacts.
+		// Note: even packages with zero tagged versions still get a ~dev.json.
 		versions = version.NormalizeVersions(versions)
-		if len(versions) == 0 {
-			continue
-		}
 
 		totalPkgs++
 		composerName := ComposerName(pkgType, name)
@@ -168,16 +162,30 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 			meta.LastUpdated = *lastCommitted
 		}
 
-		// Build per-version entries
-		composerVersions := make(map[string]any, len(versions))
+		// Split versions into tagged (for .json) and build all entries
+		taggedVersions := make(map[string]any)
 		for ver, dlURL := range versions {
-			composerVersions[ver] = ComposerVersion(pkgType, name, ver, dlURL, meta)
+			if !strings.HasPrefix(ver, "dev-") {
+				taggedVersions[ver] = ComposerVersion(pkgType, name, ver, dlURL, meta)
+			}
 		}
 
-		// Build p2/ file payload
+		// Every active package gets a ~dev.json with dev-trunk pointing to SVN trunk
+		devVersions := map[string]any{
+			"dev-trunk": ComposerVersion(pkgType, name, "dev-trunk", "", meta),
+		}
+
+		// Track whether this package has been marked as changed (avoid double-counting)
+		pkgChanged := false
+
+		// Write p2/<name>.json — tagged versions, or dev-trunk for trunk-only packages
+		mainVersions := taggedVersions
+		if len(mainVersions) == 0 {
+			mainVersions = devVersions
+		}
 		pkgPayload := map[string]any{
 			"packages": map[string]any{
-				composerName: composerVersions,
+				composerName: mainVersions,
 			},
 		}
 		_, data, err := HashJSON(pkgPayload)
@@ -192,16 +200,47 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 		}
 		artifactCount++
 
-		// Compare against previous build to determine if this package changed
 		if opts.PreviousBuildDir != "" {
 			prevData, err := os.ReadFile(filepath.Join(opts.PreviousBuildDir, p2Rel))
 			if err != nil || !bytes.Equal(prevData, data) {
-				changedPkgs++
-				changedPackages = append(changedPackages, PackageChange{Name: composerName, Action: "update"})
-				opts.Logger.Info("package changed", "package", composerName)
+				pkgChanged = true
 			}
 		} else {
+			pkgChanged = true
+		}
+
+		// Write dev versions to p2/<name>~dev.json
+		devPayload := map[string]any{
+			"packages": map[string]any{
+				composerName: devVersions,
+			},
+		}
+		_, devData, err := HashJSON(devPayload)
+		if err != nil {
+			return nil, fmt.Errorf("hashing %s~dev: %w", composerName, err)
+		}
+
+		devRel := filepath.Join("p2", composerName+"~dev.json")
+		devFile := filepath.Join(buildDir, devRel)
+		if err := os.WriteFile(devFile, devData, 0644); err != nil {
+			return nil, fmt.Errorf("writing %s: %w", devFile, err)
+		}
+		artifactCount++
+
+		if !pkgChanged {
+			if opts.PreviousBuildDir != "" {
+				prevData, err := os.ReadFile(filepath.Join(opts.PreviousBuildDir, devRel))
+				if err != nil || !bytes.Equal(prevData, devData) {
+					pkgChanged = true
+				}
+			} else {
+				pkgChanged = true
+			}
+		}
+
+		if pkgChanged {
 			changedPkgs++
+			changedPackages = append(changedPackages, PackageChange{Name: composerName, Action: "update"})
 			opts.Logger.Info("package changed", "package", composerName)
 		}
 
@@ -213,9 +252,12 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 		return nil, fmt.Errorf("iterating packages: %w", err)
 	}
 
-	// Detect deleted packages (only for full builds, not partial)
+	// Detect deleted packages (only for full builds, not partial).
+	// Collect unique package names from the previous build, then check
+	// if any are completely absent from the new build (no .json or ~dev.json).
 	isPartialBuild := opts.PackageName != "" || len(opts.PackageNames) > 0
 	if opts.PreviousBuildDir != "" && !isPartialBuild {
+		prevPackages := make(map[string]struct{})
 		prevP2 := filepath.Join(opts.PreviousBuildDir, "p2")
 		if err := filepath.Walk(prevP2, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
@@ -228,15 +270,26 @@ func Build(ctx context.Context, db *sql.DB, opts BuildOpts) (*BuildResult, error
 			if err != nil {
 				return fmt.Errorf("rel path for %s: %w", path, err)
 			}
-			newPath := filepath.Join(buildDir, "p2", rel)
-			if _, err := os.Stat(newPath); os.IsNotExist(err) {
-				name := strings.TrimSuffix(filepath.ToSlash(rel), ".json")
-				changedPackages = append(changedPackages, PackageChange{Name: name, Action: "delete"})
-				opts.Logger.Info("package deleted", "package", name)
+			relSlash := filepath.ToSlash(rel)
+			name := strings.TrimSuffix(relSlash, "~dev.json")
+			if name == relSlash {
+				name = strings.TrimSuffix(relSlash, ".json")
 			}
+			prevPackages[name] = struct{}{}
 			return nil
 		}); err != nil {
 			opts.Logger.Warn("delete detection walk failed", "error", err)
+		}
+
+		for name := range prevPackages {
+			mainPath := filepath.Join(buildDir, "p2", name+".json")
+			devPath := filepath.Join(buildDir, "p2", name+"~dev.json")
+			_, mainErr := os.Stat(mainPath)
+			_, devErr := os.Stat(devPath)
+			if os.IsNotExist(mainErr) && os.IsNotExist(devErr) {
+				changedPackages = append(changedPackages, PackageChange{Name: name, Action: "delete"})
+				opts.Logger.Info("package deleted", "package", name)
+			}
 		}
 	}
 
@@ -350,8 +403,9 @@ func validateIntegrityInMemory(buildDir string, expectedPackages int) []string {
 		return nil
 	})
 
-	if p2Count != expectedPackages {
-		errs = append(errs, fmt.Sprintf("expected %d p2/ files, found %d", expectedPackages, p2Count))
+	// Each package produces at least one p2 file, and possibly a ~dev.json too
+	if p2Count < expectedPackages {
+		errs = append(errs, fmt.Sprintf("expected at least %d p2/ files, found %d", expectedPackages, p2Count))
 	}
 
 	return errs
@@ -387,8 +441,8 @@ func ValidateIntegrity(buildDir string) []string {
 	if err == nil {
 		var manifest map[string]any
 		if json.Unmarshal(manifestData, &manifest) == nil {
-			if expected, ok := manifest["packages_total"].(float64); ok && int(expected) != p2Count {
-				return []string{fmt.Sprintf("manifest says %d packages but found %d p2/ files", int(expected), p2Count)}
+			if expected, ok := manifest["packages_total"].(float64); ok && p2Count < int(expected) {
+				return []string{fmt.Sprintf("manifest says %d packages but found only %d p2/ files", int(expected), p2Count)}
 			}
 		}
 	}

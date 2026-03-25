@@ -1,20 +1,20 @@
 {{template "layout" .}}
-{{define "title"}}WP Packages — WordPress Packages for Composer{{end}}
+{{define "title"}}WP Packages — WordPress Packages for Composer | WPackagist Alternative{{end}}
 {{define "meta_seo"}}
-<meta name="description" content="A modern, community-funded Composer repository for WordPress plugins and themes. Install any WordPress plugin or theme via Composer.">
+<meta name="description" content="Composer repository for WordPress plugins and themes. A 17x faster, open-source WPackagist alternative with 5-minute update cycles.">
 {{if .AppURL}}<link rel="canonical" href="{{.AppURL}}/">{{end}}
 {{if and .Page (gt .Page 1)}}<meta name="robots" content="noindex, follow">{{end}}
 {{end}}
 {{define "json_ld"}}{{jsonLD .JSONLD}}{{end}}
 {{define "og_meta"}}
-<meta property="og:title" content="WP Packages — WordPress Packages for Composer">
-<meta property="og:description" content="A modern, community-funded Composer repository for WordPress plugins and themes.">
+<meta property="og:title" content="WP Packages — WordPress Packages for Composer | WPackagist Alternative">
+<meta property="og:description" content="Composer repository for WordPress plugins and themes.">
 {{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{end}}
 {{if .AppURL}}<meta property="og:url" content="{{.AppURL}}">{{end}}
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="WP Packages — WordPress Packages for Composer">
-<meta name="twitter:description" content="A modern, community-funded Composer repository for WordPress plugins and themes.">
+<meta name="twitter:title" content="WP Packages — WordPress Packages for Composer | WPackagist Alternative">
+<meta name="twitter:description" content="Composer repository for WordPress plugins and themes.">
 {{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{end}}
 {{end}}
 {{define "content"}}
@@ -22,7 +22,9 @@
 <div class="absolute inset-0 bg-gradient-to-b from-brand-lightest/40 to-transparent"></div>
 <div class="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 pt-16 pb-12 sm:pt-24 sm:pb-16 text-center">
 <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-gray-900 mb-4 text-balance">WordPress Packages<br><span class="text-brand-primary">for Composer</span></h1>
-<h2 class="text-lg text-gray-500 max-w-xl mx-auto mb-8 text-balance">A modern, community-funded Composer repository for WordPress plugins and themes.</h2>
+<h2 class="text-lg text-gray-500 max-w-xl mx-auto mb-2 text-balance">Composer repository for WordPress plugins and themes.</h2>
+<h3 class="text-base text-gray-500 max-w-xl mx-auto mb-4 text-balance">A 17x faster, fully open-source alternative to WPackagist that updates every 5 minutes.</h3>
+<p class="mb-8"><a href="/wp-packages-vs-wpackagist" class="text-sm font-medium text-brand-primary hover:underline">See how WP Packages compares to WPackagist &rarr;</a></p>
 <div class="inline-flex items-center gap-3 rounded-xl border border-gray-200/80 bg-gray-100/50 px-4 py-2.5 cursor-pointer hover:border-gray-300 transition-colors max-w-full overflow-x-auto" onclick="copyCmd(this,'composer config repositories.wp-packages composer https://repo.wp-packages.org')">
 <span class="text-gray-500 text-sm font-mono select-none shrink-0">$</span>
 <code class="text-sm font-mono text-gray-900 select-all whitespace-nowrap">composer config repositories.wp-packages composer https://repo.wp-packages.org</code>
@@ -141,8 +143,8 @@
 </div>
 <p class="text-gray-600 mb-12">A typical <a href="https://roots.io/bedrock/" class="font-medium text-gray-900 hover:text-brand-primary transition-colors">Bedrock</a> project uses <code class="text-sm font-mono bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200/40">roots/wordpress</code> for WordPress core and WP Packages for plugins and themes.</p>
 
-<h2 id="migrate" class="text-2xl font-bold mb-6 scroll-mt-20">Migrating from WPackagist</h2>
-<p class="text-gray-600 mb-4">Use the <a href="https://github.com/roots/wp-packages/blob/main/scripts/migrate-from-wpackagist.sh" class="text-brand-primary hover:underline">migration script</a> to automatically update your <code class="text-sm font-mono bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200/40">composer.json</code>:</p>
+<h2 id="migrate" class="text-2xl font-bold mb-4 scroll-mt-20">Migrating from WPackagist</h2>
+<p class="text-gray-600 mb-4">Switching from WPackagist takes one command. Use the <a href="https://github.com/roots/wp-packages/blob/main/scripts/migrate-from-wpackagist.sh" class="text-brand-primary hover:underline">migration script</a> to automatically update your <code class="text-sm font-mono bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200/40">composer.json</code>:</p>
 <div class="inline-flex items-center gap-3 rounded-xl border border-gray-200/80 bg-gray-100/50 px-4 py-2.5 cursor-pointer hover:border-gray-300 transition-colors max-w-full overflow-x-auto mb-8" onclick="copyCmd(this,'curl -sO https://raw.githubusercontent.com/roots/wp-packages/main/scripts/migrate-from-wpackagist.sh &amp;&amp; bash migrate-from-wpackagist.sh')">
 <span class="text-gray-500 text-sm font-mono select-none shrink-0">$</span>
 <code class="text-sm font-mono text-gray-900 select-all whitespace-nowrap">curl -sO https://raw.githubusercontent.com/roots/wp-packages/main/scripts/migrate-from-wpackagist.sh &amp;&amp; bash migrate-from-wpackagist.sh</code>

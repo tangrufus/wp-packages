@@ -1,19 +1,19 @@
 {{template "layout" .}}
-{{define "title"}}WP Packages vs WPackagist — Why Independence Matters{{end}}
+{{define "title"}}WP Packages vs WPackagist — Faster, Independent WordPress Composer Repository{{end}}
 {{define "meta_seo"}}
-<meta name="description" content="Compare WP Packages and WPackagist. Learn why an independent, community-funded Composer repository matters for the WordPress ecosystem.">
+<meta name="description" content="Compare WP Packages and WPackagist. WP Packages is 17x faster, updates every 5 minutes, and is fully open-source.">
 {{if .AppURL}}<link rel="canonical" href="{{.AppURL}}/wp-packages-vs-wpackagist">{{end}}
 {{end}}
 {{define "json_ld"}}{{end}}
 {{define "og_meta"}}
 <meta property="og:title" content="WP Packages vs WPackagist">
-<meta property="og:description" content="Why an independent, community-funded Composer repository matters for the WordPress ecosystem.">
+<meta property="og:description" content="WP Packages is 17x faster, updates every 5 minutes, and is fully open-source.">
 {{if .OGImage}}<meta property="og:image" content="{{.OGImage}}">{{end}}
 {{if .AppURL}}<meta property="og:url" content="{{.AppURL}}/wp-packages-vs-wpackagist">{{end}}
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="WP Packages vs WPackagist">
-<meta name="twitter:description" content="Why an independent, community-funded Composer repository matters for the WordPress ecosystem.">
+<meta name="twitter:description" content="WP Packages is 17x faster, updates every 5 minutes, and is fully open-source.">
 {{if .OGImage}}<meta name="twitter:image" content="{{.OGImage}}">{{end}}
 {{end}}
 {{define "content"}}
@@ -21,7 +21,7 @@
 <div class="absolute inset-0 bg-gradient-to-b from-brand-lightest/40 to-transparent"></div>
 <div class="relative mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pt-16 pb-12 sm:pt-24 sm:pb-16 text-center">
 <h1 class="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-gray-900 mb-4 text-balance">WP Packages <span class="text-brand-primary">vs</span> WPackagist</h1>
-<p class="text-lg text-gray-500 max-w-xl mx-auto text-balance">Why an independent, community-funded Composer repository matters for the WordPress ecosystem.</p>
+<p class="text-lg text-gray-500 max-w-xl mx-auto text-balance">WP Packages is 17x faster, updates every 5 minutes, and is fully open-source.</p>
 </div>
 </section>
 
@@ -185,7 +185,7 @@
 
 <h2 class="text-2xl font-bold text-gray-900 mb-4">Migrating from WPackagist</h2>
 
-<p class="text-gray-600 mb-4 leading-relaxed">Use the <a href="https://github.com/roots/wp-packages/blob/main/scripts/migrate-from-wpackagist.sh" class="text-brand-primary hover:underline">migration script</a> to automatically update your <code class="text-sm font-mono bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200/40">composer.json</code>:</p>
+<p class="text-gray-600 mb-4 leading-relaxed">Switching from WPackagist takes one command. Use the <a href="https://github.com/roots/wp-packages/blob/main/scripts/migrate-from-wpackagist.sh" class="text-brand-primary hover:underline">migration script</a> to automatically update your <code class="text-sm font-mono bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200/40">composer.json</code>:</p>
 <div class="inline-flex items-center gap-3 rounded-xl border border-gray-200/80 bg-gray-100/50 px-4 py-2.5 cursor-pointer hover:border-gray-300 transition-colors max-w-full overflow-x-auto mb-8" onclick="copyCmd(this,'curl -sO https://raw.githubusercontent.com/roots/wp-packages/main/scripts/migrate-from-wpackagist.sh &amp;&amp; bash migrate-from-wpackagist.sh')">
 <span class="text-gray-500 text-sm font-mono select-none shrink-0">$</span>
 <code class="text-sm font-mono text-gray-900 select-all whitespace-nowrap">curl -sO https://raw.githubusercontent.com/roots/wp-packages/main/scripts/migrate-from-wpackagist.sh &amp;&amp; bash migrate-from-wpackagist.sh</code>

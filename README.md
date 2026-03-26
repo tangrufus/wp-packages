@@ -24,6 +24,7 @@ Roots is an independent open source org, supported only by developers like you. 
 | Update frequency | Every 5 minutes | ~1.5 hours (estimated) |
 | Composer v2 `metadata-url` | ✅ | ❌ |
 | Composer v2 `metadata-changes-url` | ✅ | ❌ |
+| Untagged plugin installs | Immutable — pinned to SVN revision | Mutable, resulting in unexpected plugin updates |
 
 ### Composer resolve times
 

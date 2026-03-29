@@ -310,7 +310,7 @@ func generateSitemaps(ctx context.Context, db *sql.DB, appURL string) (index []b
 		URLs: []sitemapURL{
 			{Loc: appURL + "/"},
 			{Loc: appURL + "/docs"},
-			{Loc: appURL + "/roots-wordpress"},
+			{Loc: appURL + "/wordpress-core"},
 			{Loc: appURL + "/wp-packages-vs-wpackagist"},
 			{Loc: appURL + "/untagged"},
 		},

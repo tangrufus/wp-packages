@@ -324,10 +324,10 @@ func handleUntaggedAuthors(a *app.App) http.HandlerFunc {
 	}
 }
 
-func handleRootsWordpress(a *app.App, tmpl *templateSet) http.HandlerFunc {
+func handleWordpressCore(a *app.App, tmpl *templateSet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
-		render(w, r, tmpl.rootsWordpress, "layout", map[string]any{
+		render(w, r, tmpl.wordpressCore, "layout", map[string]any{
 			"AppURL":         a.Config.AppURL,
 			"CDNURL":         a.Config.R2.CDNPublicURL,
 			"OGImage":        ogImageURL(a.Config, "social/default.png"),

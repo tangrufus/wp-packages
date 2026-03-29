@@ -90,7 +90,10 @@ func NewRouter(a *app.App) http.Handler {
 	})
 	routeFunc("GET /wp-packages-vs-wpackagist", handleCompare(a, tmpl))
 	routeFunc("GET /docs", handleDocs(a, tmpl))
-	routeFunc("GET /roots-wordpress", handleRootsWordpress(a, tmpl))
+	routeFunc("GET /roots-wordpress", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/wordpress-core", http.StatusMovedPermanently)
+	})
+	routeFunc("GET /wordpress-core", handleWordpressCore(a, tmpl))
 	routeFunc("GET /untagged", handleUntagged(a, tmpl))
 	routeFunc("GET /untagged-partial", handleUntaggedPartial(a, tmpl))
 	routeFunc("GET /untagged-authors", handleUntaggedAuthors(a))

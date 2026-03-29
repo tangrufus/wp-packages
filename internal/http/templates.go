@@ -85,7 +85,7 @@ type templateSet struct {
 	detail          *template.Template
 	compare         *template.Template
 	docs            *template.Template
-	rootsWordpress  *template.Template
+	wordpressCore   *template.Template
 	untagged        *template.Template
 	untaggedPartial *template.Template
 	notFound        *template.Template
@@ -103,7 +103,7 @@ func loadTemplates(env string) *templateSet {
 		detail:          parse("templates/layout.html", "templates/detail.html"),
 		compare:         parse("templates/layout.html", "templates/compare.html"),
 		docs:            parse("templates/layout.html", "templates/docs.html"),
-		rootsWordpress:  parse("templates/layout.html", "templates/roots_wordpress.html"),
+		wordpressCore:   parse("templates/layout.html", "templates/wordpress_core.html"),
 		untagged:        parse("templates/layout.html", "templates/untagged.html", "templates/untagged_results.html"),
 		untaggedPartial: parse("templates/untagged_results.html"),
 		notFound:        parse("templates/layout.html", "templates/404.html"),

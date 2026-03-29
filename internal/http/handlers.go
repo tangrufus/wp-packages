@@ -133,11 +133,15 @@ func handleIndex(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"Page":       page,
 			"Total":      total,
 			"TotalPages": totalPages,
-			"Stats":      stats,
-			"AppURL":     a.Config.AppURL,
-			"CDNURL":     a.Config.R2.CDNPublicURL,
-			"OGImage":    ogImageURL(a.Config, "social/default.png"),
-			"JSONLD":     jsonLDData,
+			"Pagination": buildPagination(page, totalPages, "#package-results", "#filter-form:top",
+				func(p int) string { return paginateURL(filters, p) },
+				func(p int) string { return paginatePartialURL(filters, p) },
+			),
+			"Stats":   stats,
+			"AppURL":  a.Config.AppURL,
+			"CDNURL":  a.Config.R2.CDNPublicURL,
+			"OGImage": ogImageURL(a.Config, "social/default.png"),
+			"JSONLD":  jsonLDData,
 		})
 	}
 }
@@ -174,6 +178,10 @@ func handleIndexPartial(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"Page":       page,
 			"Total":      total,
 			"TotalPages": totalPages,
+			"Pagination": buildPagination(page, totalPages, "#package-results", "#filter-form:top",
+				func(p int) string { return paginateURL(filters, p) },
+				func(p int) string { return paginatePartialURL(filters, p) },
+			),
 		})
 	}
 }
@@ -237,9 +245,13 @@ func handleUntagged(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"Total":        int64(total),
 			"TotalPlugins": totalPlugins,
 			"TotalPages":   totalPages,
-			"AppURL":       a.Config.AppURL,
-			"CDNURL":       a.Config.R2.CDNPublicURL,
-			"OGImage":      ogImageURL(a.Config, "social/default.png"),
+			"Pagination": buildPagination(page, totalPages, "#untagged-results", "#untagged-form:top",
+				func(p int) string { return untaggedPaginateURL(filter, search, author, sort, p) },
+				func(p int) string { return untaggedPaginatePartialURL(filter, search, author, sort, p) },
+			),
+			"AppURL":  a.Config.AppURL,
+			"CDNURL":  a.Config.R2.CDNPublicURL,
+			"OGImage": ogImageURL(a.Config, "social/default.png"),
 		})
 	}
 }
@@ -275,6 +287,10 @@ func handleUntaggedPartial(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"Page":       page,
 			"Total":      int64(total),
 			"TotalPages": totalPages,
+			"Pagination": buildPagination(page, totalPages, "#untagged-results", "#untagged-form:top",
+				func(p int) string { return untaggedPaginateURL(filter, search, author, sort, p) },
+				func(p int) string { return untaggedPaginatePartialURL(filter, search, author, sort, p) },
+			),
 		})
 	}
 }

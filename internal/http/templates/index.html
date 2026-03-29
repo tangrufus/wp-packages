@@ -50,9 +50,7 @@
 <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-2">
 <form id="filter-form" method="GET" action="/" hx-get="/packages-partial" hx-target="#package-results" hx-trigger="submit, change from:select, input from:[name=search] delay:300ms changed" hx-push-url="false" hx-swap="innerHTML" class="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 scroll-mt-16">
 <div class="relative w-full sm:max-w-md">
-<svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/></svg>
-<input type="search" name="search" value="{{.Filters.Search}}" placeholder="Search packages..." class="w-full pl-9 pr-12 h-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary">
-<kbd class="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none hidden sm:inline-flex h-5 items-center rounded border border-gray-200/80 bg-gray-100/80 px-1.5 text-[10px] font-mono text-gray-500">/</kbd>
+{{template "input" dict "Icon" "search" "Type" "search" "Name" "search" "Value" .Filters.Search "Placeholder" "Search packages..." "ShowShortcut" true}}
 </div>
 <div class="flex items-center gap-2">
 <label for="filter-type" class="sr-only">Package type</label>
@@ -83,10 +81,7 @@
 </div>
 
 <div class="flex justify-center mt-8">
-<div class="inline-flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 max-w-2xl">
-<svg class="w-5 h-5 text-amber-600 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"/></svg>
-<span class="text-balance">Some WordPress plugins have a latest version on WordPress.org that isn't tagged in SVN. These can be installed via <code class="text-xs font-mono bg-amber-100 px-1 py-0.5 rounded whitespace-nowrap">dev-trunk</code>. <a href="/untagged" class="font-medium underline underline-offset-2 hover:no-underline">Learn more on our Untagged Plugins page</a>.</span>
-</div>
+{{template "notice" dict "Variant" "warning" "Class" "max-w-2xl" "Content" (trustedHTML "Some WordPress plugins have a latest version on WordPress.org that isn't tagged in SVN. These can be installed via <code class='text-xs font-mono bg-amber-100 px-1 py-0.5 rounded whitespace-nowrap'>dev-trunk</code>. <a href='/untagged' class='font-medium underline underline-offset-2 hover:no-underline'>Learn more on our Untagged Plugins page</a>.")}}
 </div>
 
 </section>

@@ -77,6 +77,21 @@ var funcMap = template.FuncMap{
 		}
 		return fmt.Sprintf("%.1f", float64(n)*100/float64(total))
 	},
+	"trustedHTML": func(s string) template.HTML { return template.HTML(s) },
+	"dict": func(pairs ...any) map[string]any {
+		if len(pairs)%2 != 0 {
+			pairs = pairs[:len(pairs)-1]
+		}
+		m := make(map[string]any, len(pairs)/2)
+		for i := 0; i < len(pairs); i += 2 {
+			key, ok := pairs[i].(string)
+			if !ok {
+				continue
+			}
+			m[key] = pairs[i+1]
+		}
+		return m
+	},
 }
 
 type templateSet struct {
@@ -97,15 +112,16 @@ type templateSet struct {
 
 func loadTemplates(env string) *templateSet {
 	funcMap["isProduction"] = func() bool { return env == "production" }
+	const comp = "templates/components.html"
 	return &templateSet{
-		index:           parse("templates/layout.html", "templates/index.html", "templates/package_results.html"),
-		indexPartial:    parse("templates/package_results.html"),
-		detail:          parse("templates/layout.html", "templates/detail.html"),
-		compare:         parse("templates/layout.html", "templates/compare.html"),
-		docs:            parse("templates/layout.html", "templates/docs.html"),
+		index:           parse(comp, "templates/layout.html", "templates/index.html", "templates/package_results.html"),
+		indexPartial:    parse(comp, "templates/package_results.html"),
+		detail:          parse(comp, "templates/layout.html", "templates/detail.html"),
+		compare:         parse(comp, "templates/layout.html", "templates/compare.html"),
+		docs:            parse(comp, "templates/layout.html", "templates/docs.html"),
 		rootsWordpress:  parse("templates/layout.html", "templates/roots_wordpress.html"),
-		untagged:        parse("templates/layout.html", "templates/untagged.html", "templates/untagged_results.html"),
-		untaggedPartial: parse("templates/untagged_results.html"),
+		untagged:        parse(comp, "templates/layout.html", "templates/untagged.html", "templates/untagged_results.html"),
+		untaggedPartial: parse(comp, "templates/untagged_results.html"),
 		notFound:        parse("templates/layout.html", "templates/404.html"),
 		adminDashboard:  parse("templates/admin_layout.html", "templates/admin_dashboard.html"),
 		adminPackages:   parse("templates/admin_layout.html", "templates/admin_packages.html"),
@@ -152,6 +168,53 @@ func formatNumberComma(n int64) string {
 		result = append(result, byte(c))
 	}
 	return string(result)
+}
+
+type pageLink struct {
+	Number     int
+	URL        string
+	PartialURL string
+}
+
+type pagination struct {
+	Page        int
+	TotalPages  int
+	Pages       []pageLink
+	PrevURL     string
+	PrevPartial string
+	NextURL     string
+	NextPartial string
+	Target      string
+	SwapTarget  string
+}
+
+func buildPagination(page, totalPages int, target, swapTarget string, urlFn, partialFn func(int) string) *pagination {
+	if totalPages <= 1 {
+		return nil
+	}
+	p := &pagination{
+		Page:       page,
+		TotalPages: totalPages,
+		Target:     target,
+		SwapTarget: swapTarget,
+	}
+	if page > 1 {
+		p.PrevURL = urlFn(page - 1)
+		p.PrevPartial = partialFn(page - 1)
+	}
+	if page < totalPages {
+		p.NextURL = urlFn(page + 1)
+		p.NextPartial = partialFn(page + 1)
+	}
+	for _, n := range pageRange(page, totalPages) {
+		pl := pageLink{Number: n}
+		if n > 0 {
+			pl.URL = urlFn(n)
+			pl.PartialURL = partialFn(n)
+		}
+		p.Pages = append(p.Pages, pl)
+	}
+	return p
 }
 
 type publicFilters struct {

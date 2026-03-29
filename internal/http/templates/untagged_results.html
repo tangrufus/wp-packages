@@ -41,11 +41,9 @@
 </table>
 </div>
 
-{{if gt .TotalPages 1}}
-<div class="flex justify-center items-center gap-1 pt-8">
-{{if gt .Page 1}}<a href="{{untaggedPaginate .Filter .Search .Author .Sort (sub .Page 1)}}" hx-get="{{untaggedPaginateP .Filter .Search .Author .Sort (sub .Page 1)}}" hx-target="#untagged-results" hx-swap="innerHTML show:#untagged-form:top" hx-include="" class="inline-flex items-center gap-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors cursor-pointer"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>Previous</a>{{else}}<span class="inline-flex items-center gap-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-300 cursor-default"><svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5"/></svg>Previous</span>{{end}}
-{{range pageRange $.Page $.TotalPages}}{{if eq . 0}}<span class="min-w-9 h-9 px-2 inline-flex items-center justify-center text-sm text-gray-400">...</span>{{else if eq . $.Page}}<span class="min-w-9 h-9 px-2 inline-flex items-center justify-center border border-gray-200 rounded-lg text-sm font-medium text-gray-900 bg-gray-50">{{.}}</span>{{else}}<a href="{{untaggedPaginate $.Filter $.Search $.Author $.Sort .}}" hx-get="{{untaggedPaginateP $.Filter $.Search $.Author $.Sort .}}" hx-target="#untagged-results" hx-swap="innerHTML show:#untagged-form:top" hx-include="" class="min-w-9 h-9 px-2 inline-flex items-center justify-center border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors cursor-pointer">{{.}}</a>{{end}}{{end}}
-{{if lt .Page .TotalPages}}<a href="{{untaggedPaginate .Filter .Search .Author .Sort (add .Page 1)}}" hx-get="{{untaggedPaginateP .Filter .Search .Author .Sort (add .Page 1)}}" hx-target="#untagged-results" hx-swap="innerHTML show:#untagged-form:top" hx-include="" class="inline-flex items-center gap-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-900 transition-colors cursor-pointer">Next<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg></a>{{else}}<span class="inline-flex items-center gap-1 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-300 cursor-default">Next<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg></span>{{end}}
+{{with .Pagination}}
+<div class="pt-8">
+{{template "pagination" .}}
 </div>
 {{end}}
 {{end}}

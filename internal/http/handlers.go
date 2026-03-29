@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"log/slog"
 	"net/http"
 	"os"
@@ -234,6 +235,12 @@ func handleUntagged(a *app.App, tmpl *templateSet) http.HandlerFunc {
 		var totalPlugins int64
 		_ = a.DB.QueryRowContext(r.Context(), "SELECT active_plugins FROM package_stats WHERE id = 1").Scan(&totalPlugins)
 
+		pct := "0"
+		if totalPlugins > 0 {
+			pct = fmt.Sprintf("%.1f", float64(total)*100/float64(totalPlugins))
+		}
+		statsNotice := template.HTML(fmt.Sprintf("<strong>%s</strong> plugins affected (%s%% of all plugins)", formatNumberComma(int64(total)), pct))
+
 		w.Header().Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
 		render(w, r, tmpl.untagged, "layout", map[string]any{
 			"Packages":     packages,
@@ -244,6 +251,7 @@ func handleUntagged(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"Page":         page,
 			"Total":        int64(total),
 			"TotalPlugins": totalPlugins,
+			"StatsNotice":  statsNotice,
 			"TotalPages":   totalPages,
 			"Pagination": buildPagination(page, totalPages, "#untagged-results", "#untagged-form:top", "pt-8",
 				func(p int) string { return untaggedPaginateURL(filter, search, author, sort, p) },

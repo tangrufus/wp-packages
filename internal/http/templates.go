@@ -186,9 +186,10 @@ type pagination struct {
 	NextPartial string
 	Target      string
 	SwapTarget  string
+	Class       string
 }
 
-func buildPagination(page, totalPages int, target, swapTarget string, urlFn, partialFn func(int) string) *pagination {
+func buildPagination(page, totalPages int, target, swapTarget, class string, urlFn, partialFn func(int) string) *pagination {
 	if totalPages <= 1 {
 		return nil
 	}
@@ -197,6 +198,7 @@ func buildPagination(page, totalPages int, target, swapTarget string, urlFn, par
 		TotalPages: totalPages,
 		Target:     target,
 		SwapTarget: swapTarget,
+		Class:      class,
 	}
 	if page > 1 {
 		p.PrevURL = urlFn(page - 1)

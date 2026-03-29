@@ -26,10 +26,6 @@
 </a>
 {{end}}
 </div>
-{{with .Pagination}}
-<div class="pb-8">
-{{template "pagination" .}}
-</div>
-{{end}}
+{{template "pagination" .Pagination}}
 
 {{end}}

@@ -41,9 +41,5 @@
 </table>
 </div>
 
-{{with .Pagination}}
-<div class="pt-8">
-{{template "pagination" .}}
-</div>
-{{end}}
+{{template "pagination" .Pagination}}
 {{end}}

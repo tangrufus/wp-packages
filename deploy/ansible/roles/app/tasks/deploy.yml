@@ -81,6 +81,23 @@
     state: restarted
   when: wppackages_service.stat.exists
 
+- name: Wait for wppackages port to accept connections
+  wait_for:
+    host: "{{ (go_upstream_addr | default('127.0.0.1:8080')).split(':')[0] }}"
+    port: "{{ (go_upstream_addr | default('127.0.0.1:8080')).split(':')[1] | int }}"
+    timeout: 30
+  when: wppackages_service.stat.exists
+
+- name: Wait for wppackages health endpoint
+  uri:
+    url: "http://{{ go_upstream_addr | default('127.0.0.1:8080') }}/health"
+    status_code: 200
+  register: wppackages_health
+  retries: 30
+  delay: 1
+  until: wppackages_health.status == 200 and (wppackages_health.json.status | default('')) == "ok"
+  when: wppackages_service.stat.exists
+
 - name: Clean up old releases
   shell: |
     cd {{ app_root }}/releases

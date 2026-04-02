@@ -31,6 +31,10 @@ type Package struct {
 	LastCommitted           *time.Time
 	LastSyncedAt            *time.Time
 	LastSyncRunID           *int64
+	TrunkRevision           *int64
+	ContentHash             *string
+	DeployedHash            *string
+	ContentChangedAt        *time.Time
 	WpPackagesInstallsTotal int
 	WpPackagesInstalls30d   int
 	LastInstalledAt         *time.Time
@@ -84,8 +88,9 @@ func UpsertPackage(ctx context.Context, db *sql.DB, pkg *Package) error {
 			versions_json, downloads, active_installs,
 			current_version, wporg_version, rating, num_ratings, is_active,
 			last_committed, last_synced_at, last_sync_run_id,
+			content_hash, content_changed_at,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(type, name) DO UPDATE SET
 			display_name = excluded.display_name,
 			description = excluded.description,
@@ -107,12 +112,15 @@ func UpsertPackage(ctx context.Context, db *sql.DB, pkg *Package) error {
 			END,
 			last_synced_at = COALESCE(excluded.last_synced_at, packages.last_synced_at),
 			last_sync_run_id = COALESCE(excluded.last_sync_run_id, packages.last_sync_run_id),
+			content_hash = COALESCE(excluded.content_hash, packages.content_hash),
+			content_changed_at = COALESCE(excluded.content_changed_at, packages.content_changed_at),
 			updated_at = excluded.updated_at`,
 		pkg.Type, pkg.Name, pkg.DisplayName, pkg.Description, pkg.Author,
 		pkg.Homepage, pkg.SlugURL, pkg.VersionsJSON,
 		pkg.Downloads, pkg.ActiveInstalls, pkg.CurrentVersion, pkg.WporgVersion, pkg.Rating,
 		pkg.NumRatings, boolToInt(pkg.IsActive),
 		timeStr(pkg.LastCommitted), timeStr(pkg.LastSyncedAt), pkg.LastSyncRunID,
+		pkg.ContentHash, timeStr(pkg.ContentChangedAt),
 		now, now,
 	)
 	if err != nil {
@@ -203,8 +211,9 @@ func BatchUpsertPackages(ctx context.Context, db *sql.DB, pkgs []*Package) error
 			versions_json, downloads, active_installs,
 			current_version, wporg_version, rating, num_ratings, is_active,
 			last_committed, last_synced_at, last_sync_run_id,
+			content_hash, content_changed_at,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(type, name) DO UPDATE SET
 			display_name = excluded.display_name,
 			description = excluded.description,
@@ -226,6 +235,8 @@ func BatchUpsertPackages(ctx context.Context, db *sql.DB, pkgs []*Package) error
 			END,
 			last_synced_at = COALESCE(excluded.last_synced_at, packages.last_synced_at),
 			last_sync_run_id = COALESCE(excluded.last_sync_run_id, packages.last_sync_run_id),
+			content_hash = COALESCE(excluded.content_hash, packages.content_hash),
+			content_changed_at = COALESCE(excluded.content_changed_at, packages.content_changed_at),
 			updated_at = excluded.updated_at`)
 	if err != nil {
 		return fmt.Errorf("preparing statement: %w", err)
@@ -240,6 +251,7 @@ func BatchUpsertPackages(ctx context.Context, db *sql.DB, pkgs []*Package) error
 			pkg.Downloads, pkg.ActiveInstalls, pkg.CurrentVersion, pkg.WporgVersion, pkg.Rating,
 			pkg.NumRatings, boolToInt(pkg.IsActive),
 			timeStr(pkg.LastCommitted), timeStr(pkg.LastSyncedAt), pkg.LastSyncRunID,
+			pkg.ContentHash, timeStr(pkg.ContentChangedAt),
 			now, now,
 		); err != nil {
 			return fmt.Errorf("upserting package %s/%s: %w", pkg.Type, pkg.Name, err)
@@ -259,7 +271,7 @@ type UpdateQueryOpts struct {
 
 // GetPackagesNeedingUpdate returns packages that should be updated.
 func GetPackagesNeedingUpdate(ctx context.Context, db *sql.DB, opts UpdateQueryOpts) ([]*Package, error) {
-	query := `SELECT id, type, name, last_committed, last_synced_at, is_active FROM packages WHERE 1=1`
+	query := `SELECT id, type, name, last_committed, last_synced_at, is_active, versions_json, content_hash, trunk_revision FROM packages WHERE 1=1`
 	var args []any
 
 	if opts.Name != "" {
@@ -308,7 +320,7 @@ func GetPackagesNeedingUpdate(ctx context.Context, db *sql.DB, opts UpdateQueryO
 		var p Package
 		var isActive int
 		var lastCommitted, lastSyncedAt *string
-		if err := rows.Scan(&p.ID, &p.Type, &p.Name, &lastCommitted, &lastSyncedAt, &isActive); err != nil {
+		if err := rows.Scan(&p.ID, &p.Type, &p.Name, &lastCommitted, &lastSyncedAt, &isActive, &p.VersionsJSON, &p.ContentHash, &p.TrunkRevision); err != nil {
 			return nil, fmt.Errorf("scanning package row: %w", err)
 		}
 		p.IsActive = isActive == 1
@@ -339,6 +351,121 @@ func DeactivatePackage(ctx context.Context, db *sql.DB, id int64) error {
 	return nil
 }
 
+// ReactivatePackage sets is_active = 1 for a package.
+func ReactivatePackage(ctx context.Context, db *sql.DB, id int64) error {
+	_, err := db.ExecContext(ctx,
+		`UPDATE packages SET is_active = 1, updated_at = ? WHERE id = ?`,
+		time.Now().UTC().Format(time.RFC3339), id,
+	)
+	if err != nil {
+		return fmt.Errorf("reactivating package %d: %w", id, err)
+	}
+	return nil
+}
+
+// GetAllPackages returns all packages, optionally filtered by type.
+func GetAllPackages(ctx context.Context, db *sql.DB, pkgType string) ([]*Package, error) {
+	query := `SELECT id, type, name, is_active FROM packages WHERE 1=1`
+	var args []any
+
+	if pkgType != "" && pkgType != "all" {
+		query += ` AND type = ?`
+		args = append(args, pkgType)
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("querying packages: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var pkgs []*Package
+	for rows.Next() {
+		var p Package
+		if err := rows.Scan(&p.ID, &p.Type, &p.Name, &p.IsActive); err != nil {
+			return nil, fmt.Errorf("scanning package: %w", err)
+		}
+		pkgs = append(pkgs, &p)
+	}
+	return pkgs, rows.Err()
+}
+
+// StartStatusCheck inserts a new status_checks row and returns its ID.
+func StartStatusCheck(ctx context.Context, db *sql.DB, started time.Time) (int64, error) {
+	res, err := db.ExecContext(ctx,
+		`INSERT INTO status_checks (started_at, status) VALUES (?, 'running')`,
+		started.Format(time.RFC3339))
+	if err != nil {
+		return 0, fmt.Errorf("inserting status check: %w", err)
+	}
+	return res.LastInsertId()
+}
+
+// FinishStatusCheck updates a status_checks row with the final results.
+func FinishStatusCheck(ctx context.Context, db *sql.DB, id int64, started time.Time,
+	checked, deactivated, reactivated, failed int64, runErr error) error {
+	now := time.Now().UTC()
+	status := "completed"
+	var errMsg *string
+	if runErr != nil {
+		status = "failed"
+		s := runErr.Error()
+		errMsg = &s
+	} else if failed > 0 {
+		status = "completed_with_errors"
+	}
+	_, err := db.ExecContext(ctx, `
+		UPDATE status_checks SET
+			finished_at = ?, status = ?, checked = ?, deactivated = ?,
+			reactivated = ?, failed = ?, duration_seconds = ?, error_message = ?
+		WHERE id = ?`,
+		now.Format(time.RFC3339), status, checked, deactivated,
+		reactivated, failed, int(now.Sub(started).Seconds()), errMsg, id)
+	if err != nil {
+		return fmt.Errorf("finishing status check %d: %w", id, err)
+	}
+	return nil
+}
+
+// StatusCheck represents a row from the status_checks table.
+type StatusCheck struct {
+	ID              int64
+	StartedAt       string
+	FinishedAt      string
+	Status          string
+	Checked         int64
+	Deactivated     int64
+	Reactivated     int64
+	Failed          int64
+	DurationSeconds *int
+	ErrorMessage    string
+}
+
+// GetStatusChecks returns the most recent status check runs.
+func GetStatusChecks(ctx context.Context, db *sql.DB, limit int) ([]StatusCheck, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT id, started_at, COALESCE(finished_at, ''), status,
+			checked, deactivated, reactivated, failed,
+			duration_seconds, COALESCE(error_message, '')
+		FROM status_checks ORDER BY started_at DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("querying status checks: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var checks []StatusCheck
+	for rows.Next() {
+		var c StatusCheck
+		if err := rows.Scan(&c.ID, &c.StartedAt, &c.FinishedAt, &c.Status,
+			&c.Checked, &c.Deactivated, &c.Reactivated, &c.Failed,
+			&c.DurationSeconds, &c.ErrorMessage); err != nil {
+			return nil, fmt.Errorf("scanning status check: %w", err)
+		}
+		checks = append(checks, c)
+	}
+	return checks, rows.Err()
+}
+
 // RefreshSiteStats recomputes the package_stats row from the packages table.
 func RefreshSiteStats(ctx context.Context, db *sql.DB) error {
 	_, err := db.ExecContext(ctx, `
@@ -358,10 +485,11 @@ func RefreshSiteStats(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-// MarkPackagesChanged sets last_committed = now for the given slugs of a
-// specific type, so they'll be picked up by GetPackagesNeedingUpdate.
-func MarkPackagesChanged(ctx context.Context, db *sql.DB, pkgType string, slugs []string) (int64, error) {
-	if len(slugs) == 0 {
+// MarkPackagesChanged sets last_committed = now and trunk_revision for the given
+// slugs of a specific type, so they'll be picked up by GetPackagesNeedingUpdate.
+// slugRevisions maps each slug to its highest SVN revision from the changelog.
+func MarkPackagesChanged(ctx context.Context, db *sql.DB, pkgType string, slugRevisions map[string]int64) (int64, error) {
+	if len(slugRevisions) == 0 {
 		return 0, nil
 	}
 
@@ -375,7 +503,7 @@ func MarkPackagesChanged(ctx context.Context, db *sql.DB, pkgType string, slugs 
 
 	stmt, err := tx.PrepareContext(ctx, `
 		UPDATE packages
-		SET last_committed = ?, updated_at = ?
+		SET last_committed = ?, updated_at = ?, trunk_revision = ?
 		WHERE type = ? AND name = ? AND is_active = 1`)
 	if err != nil {
 		return 0, fmt.Errorf("preparing statement: %w", err)
@@ -383,10 +511,48 @@ func MarkPackagesChanged(ctx context.Context, db *sql.DB, pkgType string, slugs 
 	defer func() { _ = stmt.Close() }()
 
 	var affected int64
-	for _, slug := range slugs {
-		res, err := stmt.ExecContext(ctx, now, now, pkgType, slug)
+	for slug, rev := range slugRevisions {
+		res, err := stmt.ExecContext(ctx, now, now, rev, pkgType, slug)
 		if err != nil {
 			return affected, fmt.Errorf("marking package %s/%s changed: %w", pkgType, slug, err)
+		}
+		n, _ := res.RowsAffected()
+		affected += n
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("committing: %w", err)
+	}
+	return affected, nil
+}
+
+// BackfillTrunkRevisions sets trunk_revision for active plugins that don't have one yet.
+// Only updates rows where trunk_revision IS NULL to avoid overwriting newer data.
+func BackfillTrunkRevisions(ctx context.Context, db *sql.DB, slugRevisions map[string]int64) (int64, error) {
+	if len(slugRevisions) == 0 {
+		return 0, nil
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("beginning transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.PrepareContext(ctx, `
+		UPDATE packages
+		SET trunk_revision = ?
+		WHERE type = 'plugin' AND name = ? AND is_active = 1 AND trunk_revision IS NULL`)
+	if err != nil {
+		return 0, fmt.Errorf("preparing statement: %w", err)
+	}
+	defer func() { _ = stmt.Close() }()
+
+	var affected int64
+	for slug, rev := range slugRevisions {
+		res, err := stmt.ExecContext(ctx, rev, slug)
+		if err != nil {
+			return affected, fmt.Errorf("backfilling trunk_revision for %s: %w", slug, err)
 		}
 		n, _ := res.RowsAffected()
 		affected += n

@@ -24,6 +24,7 @@ import (
 	"github.com/roots/wp-packages/internal/config"
 	"github.com/roots/wp-packages/internal/deploy"
 	"github.com/roots/wp-packages/internal/og"
+	"github.com/roots/wp-packages/internal/packages"
 	"github.com/roots/wp-packages/internal/version"
 )
 
@@ -72,6 +73,7 @@ type packageRow struct {
 	ActiveInstalls          int64
 	IsActive                bool
 	LastSyncedAt            string
+	LastCommitted           string
 	WpPackagesInstallsTotal int64
 }
 
@@ -137,6 +139,7 @@ func handleIndex(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"CDNURL":     a.Config.R2.CDNPublicURL,
 			"OGImage":    ogImageURL(a.Config, "social/default.png"),
 			"JSONLD":     jsonLDData,
+			"BlogPosts":  a.Blog.Posts(),
 		})
 	}
 }
@@ -177,6 +180,17 @@ func handleIndexPartial(a *app.App, tmpl *templateSet) http.HandlerFunc {
 	}
 }
 
+func handleDocs(a *app.App, tmpl *templateSet) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
+		render(w, r, tmpl.docs, "layout", map[string]any{
+			"AppURL":  a.Config.AppURL,
+			"CDNURL":  a.Config.R2.CDNPublicURL,
+			"OGImage": ogImageURL(a.Config, "social/default.png"),
+		})
+	}
+}
+
 func handleCompare(a *app.App, tmpl *templateSet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
@@ -198,8 +212,10 @@ func handleUntagged(a *app.App, tmpl *templateSet) http.HandlerFunc {
 		}
 		filter := r.URL.Query().Get("filter")
 		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		author := strings.TrimSpace(r.URL.Query().Get("author"))
+		sort := r.URL.Query().Get("sort")
 
-		packages, total, err := queryUntaggedPackages(r.Context(), a.DB, filter, search, page, untaggedPerPage)
+		packages, total, err := queryUntaggedPackages(r.Context(), a.DB, filter, search, author, sort, page, untaggedPerPage)
 		if err != nil {
 			a.Logger.Error("querying untagged packages", "error", err)
 			captureError(r, err)
@@ -217,6 +233,8 @@ func handleUntagged(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"Packages":     packages,
 			"Filter":       filter,
 			"Search":       search,
+			"Author":       author,
+			"Sort":         sort,
 			"Page":         page,
 			"Total":        int64(total),
 			"TotalPlugins": totalPlugins,
@@ -236,8 +254,10 @@ func handleUntaggedPartial(a *app.App, tmpl *templateSet) http.HandlerFunc {
 		}
 		filter := r.URL.Query().Get("filter")
 		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		author := strings.TrimSpace(r.URL.Query().Get("author"))
+		sort := r.URL.Query().Get("sort")
 
-		packages, total, err := queryUntaggedPackages(r.Context(), a.DB, filter, search, page, untaggedPerPage)
+		packages, total, err := queryUntaggedPackages(r.Context(), a.DB, filter, search, author, sort, page, untaggedPerPage)
 		if err != nil {
 			a.Logger.Error("querying untagged packages", "error", err)
 			captureError(r, err)
@@ -252,6 +272,8 @@ func handleUntaggedPartial(a *app.App, tmpl *templateSet) http.HandlerFunc {
 			"Packages":   packages,
 			"Filter":     filter,
 			"Search":     search,
+			"Author":     author,
+			"Sort":       sort,
 			"Page":       page,
 			"Total":      int64(total),
 			"TotalPages": totalPages,
@@ -259,10 +281,55 @@ func handleUntaggedPartial(a *app.App, tmpl *templateSet) http.HandlerFunc {
 	}
 }
 
-func handleRootsWordpress(a *app.App, tmpl *templateSet) http.HandlerFunc {
+func handleUntaggedAuthors(a *app.App) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		q := strings.TrimSpace(r.URL.Query().Get("q"))
+		if len(q) < 2 {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte("[]"))
+			return
+		}
+
+		rows, err := a.DB.QueryContext(r.Context(),
+			`SELECT DISTINCT author FROM packages
+			WHERE is_active = 1 AND type = 'plugin'
+			AND wporg_version IS NOT NULL AND wporg_version != ''
+			AND NOT EXISTS (SELECT 1 FROM json_each(versions_json) WHERE key = wporg_version)
+			AND author != '' AND author LIKE ?
+			ORDER BY author COLLATE NOCASE
+			LIMIT 10`,
+			q+"%",
+		)
+		if err != nil {
+			a.Logger.Error("querying untagged authors", "error", err)
+			captureError(r, err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		defer func() { _ = rows.Close() }()
+
+		var authors []string
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				continue
+			}
+			authors = append(authors, name)
+		}
+		if authors == nil {
+			authors = []string{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		_ = json.NewEncoder(w).Encode(authors)
+	}
+}
+
+func handleWordpressCore(a *app.App, tmpl *templateSet) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400")
-		render(w, r, tmpl.rootsWordpress, "layout", map[string]any{
+		render(w, r, tmpl.wordpressCore, "layout", map[string]any{
 			"AppURL":         a.Config.AppURL,
 			"CDNURL":         a.Config.R2.CDNPublicURL,
 			"OGImage":        ogImageURL(a.Config, "social/default.png"),
@@ -283,11 +350,11 @@ func handleDetail(a *app.App, tmpl *templateSet) http.HandlerFunc {
 		if err != nil {
 			gone := packageExistsInactive(r.Context(), a.DB, pkgType, name)
 			if gone {
-				w.WriteHeader(http.StatusGone)
+				http.Redirect(w, r, "https://wp-packages.org/", http.StatusFound)
 			} else {
 				w.WriteHeader(http.StatusNotFound)
+				render(w, r, tmpl.notFound, "layout", map[string]any{"Gone": false, "CDNURL": a.Config.R2.CDNPublicURL})
 			}
-			render(w, r, tmpl.notFound, "layout", map[string]any{"Gone": gone, "CDNURL": a.Config.R2.CDNPublicURL})
 			return
 		}
 
@@ -573,9 +640,23 @@ func markStaleBuildsCancelled(ctx context.Context, db *sql.DB, logger *slog.Logg
 	}
 }
 
+func handleAdminStatusChecks(a *app.App, tmpl *templateSet) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		checks, err := packages.GetStatusChecks(r.Context(), a.DB, 50)
+		if err != nil {
+			a.Logger.Error("querying status checks", "error", err)
+			captureError(r, err)
+		}
+		render(w, r, tmpl.adminStatusChecks, "admin_layout", map[string]any{
+			"Checks": checks,
+		})
+	}
+}
+
 var logFiles = map[string]string{
-	"wppackages": filepath.Join("storage", "logs", "wppackages.log"),
-	"pipeline":   filepath.Join("storage", "logs", "pipeline.log"),
+	"wppackages":   filepath.Join("storage", "logs", "wppackages.log"),
+	"pipeline":     filepath.Join("storage", "logs", "pipeline.log"),
+	"check-status": filepath.Join("storage", "logs", "check-status.log"),
 }
 
 func handleAdminLogs(tmpl *templateSet) http.HandlerFunc {
@@ -997,7 +1078,7 @@ func queryAdminPackages(ctx context.Context, db *sql.DB, f adminFilters, page, l
 	return pkgs, total, rows.Err()
 }
 
-func queryUntaggedPackages(ctx context.Context, db *sql.DB, filter, search string, page, limit int) ([]packageRow, int, error) {
+func queryUntaggedPackages(ctx context.Context, db *sql.DB, filter, search, author, sort string, page, limit int) ([]packageRow, int, error) {
 	where := `is_active = 1 AND type = 'plugin' AND wporg_version IS NOT NULL AND wporg_version != '' AND NOT EXISTS (SELECT 1 FROM json_each(versions_json) WHERE key = wporg_version)`
 
 	var args []any
@@ -1015,15 +1096,29 @@ func queryUntaggedPackages(ctx context.Context, db *sql.DB, filter, search strin
 		args = append(args, pat, pat)
 	}
 
+	if author != "" {
+		where += ` AND author = ? COLLATE NOCASE`
+		args = append(args, author)
+	}
+
 	var total int
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM packages WHERE "+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
+	orderBy := "active_installs DESC"
+	switch sort {
+	case "updated":
+		orderBy = "last_committed DESC NULLS LAST"
+	case "least_updated":
+		orderBy = "last_committed ASC NULLS LAST"
+	}
+
 	offset := (page - 1) * limit
 	q := fmt.Sprintf(`SELECT type, name, COALESCE(display_name,''), COALESCE(description,''),
-		COALESCE(current_version,''), COALESCE(wporg_version,''), downloads, active_installs, wp_packages_installs_total
-		FROM packages WHERE %s ORDER BY active_installs DESC LIMIT ? OFFSET ?`, where)
+		COALESCE(current_version,''), COALESCE(wporg_version,''), downloads, active_installs, wp_packages_installs_total,
+		COALESCE(last_committed,'')
+		FROM packages WHERE %s ORDER BY %s LIMIT ? OFFSET ?`, where, orderBy)
 
 	rows, err := db.QueryContext(ctx, q, append(args, limit, offset)...)
 	if err != nil {
@@ -1034,7 +1129,7 @@ func queryUntaggedPackages(ctx context.Context, db *sql.DB, filter, search strin
 	var pkgs []packageRow
 	for rows.Next() {
 		var p packageRow
-		if err := rows.Scan(&p.Type, &p.Name, &p.DisplayName, &p.Description, &p.CurrentVersion, &p.WporgVersion, &p.Downloads, &p.ActiveInstalls, &p.WpPackagesInstallsTotal); err != nil {
+		if err := rows.Scan(&p.Type, &p.Name, &p.DisplayName, &p.Description, &p.CurrentVersion, &p.WporgVersion, &p.Downloads, &p.ActiveInstalls, &p.WpPackagesInstallsTotal, &p.LastCommitted); err != nil {
 			return nil, 0, fmt.Errorf("scanning untagged package row: %w", err)
 		}
 		pkgs = append(pkgs, p)

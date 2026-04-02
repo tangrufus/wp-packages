@@ -97,6 +97,16 @@ wppackages aggregate-installs
 
 Recomputes `wp_packages_installs_total`, `wp_packages_installs_30d`, and `last_installed_at` on all packages.
 
+### Check Status
+
+```bash
+wppackages check-status
+wppackages check-status --type=plugin
+wppackages check-status --concurrency=20
+```
+
+Re-checks all packages against the WordPress.org API to detect closures and re-openings. Deactivates packages that return `closed` and reactivates inactive packages that return valid data. Results are recorded in the `status_checks` table and visible in the admin at `/admin/status-checks`.
+
 ### Cleanup Sessions
 
 ```bash
@@ -113,6 +123,7 @@ Configure via systemd timers or cron:
 |---------|----------|-------|
 | `wppackages pipeline` | Every 5 minutes | Main data refresh cycle |
 | `wppackages aggregate-installs` | Hourly | Telemetry counter rollups |
+| `wppackages check-status` | Hourly | Detect closed/reopened packages on wp.org |
 | `wppackages cleanup-sessions` | Daily | Expired session cleanup |
 | `wppackages generate-og` | Daily | Regenerate OG images where install counts changed |
 
@@ -138,6 +149,7 @@ All commands accept:
 | `R2_BUCKET` | R2 bucket name |
 | `R2_ENDPOINT` | R2 S3-compatible endpoint URL |
 | `LITESTREAM_BUCKET` | R2 bucket for Litestream DB backup |
+| `DISCORD_WEBHOOK_URL` | Discord webhook for pipeline failure notifications (optional) |
 
 ## Admin Bootstrap
 

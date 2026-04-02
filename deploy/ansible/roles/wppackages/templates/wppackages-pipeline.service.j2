@@ -1,5 +1,6 @@
 [Unit]
 Description=WP Packages Pipeline (discover + update + build + deploy)
+OnFailure=wppackages-pipeline-notify@%n.service
 
 [Service]
 Type=oneshot

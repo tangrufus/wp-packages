@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -28,11 +30,28 @@ func ListenAndServe(a *app.App) error {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	ln, err := systemdListener()
+	if err != nil {
+		return err
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
-		a.Logger.Info("starting server", "addr", a.Config.Server.Addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- fmt.Errorf("server error: %w", err)
+		addr := a.Config.Server.Addr
+		if ln != nil {
+			addr = ln.Addr().String()
+		}
+		a.Logger.Info("starting server", "addr", addr, "socket_activation", ln != nil)
+
+		var serveErr error
+		if ln != nil {
+			serveErr = srv.Serve(ln)
+		} else {
+			serveErr = srv.ListenAndServe()
+		}
+
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("server error: %w", serveErr)
 		}
 		close(errCh)
 	}()
@@ -64,4 +83,45 @@ func ListenAndServe(a *app.App) error {
 
 	a.Logger.Info("server stopped")
 	return nil
+}
+
+func systemdListener() (net.Listener, error) {
+	pidValue := os.Getenv("LISTEN_PID")
+	fdsValue := os.Getenv("LISTEN_FDS")
+
+	if pidValue == "" || fdsValue == "" {
+		return nil, nil
+	}
+
+	pid, err := strconv.Atoi(pidValue)
+	if err != nil {
+		return nil, fmt.Errorf("invalid LISTEN_PID %q: %w", pidValue, err)
+	}
+	if pid != os.Getpid() {
+		return nil, nil
+	}
+
+	fds, err := strconv.Atoi(fdsValue)
+	if err != nil {
+		return nil, fmt.Errorf("invalid LISTEN_FDS %q: %w", fdsValue, err)
+	}
+	if fds == 0 {
+		return nil, nil
+	}
+	if fds > 1 {
+		return nil, fmt.Errorf("expected exactly one systemd socket fd, got %d", fds)
+	}
+
+	_ = os.Unsetenv("LISTEN_PID")
+	_ = os.Unsetenv("LISTEN_FDS")
+	_ = os.Unsetenv("LISTEN_FDNAMES")
+
+	file := os.NewFile(uintptr(3), "systemd-listen-fd")
+	ln, err := net.FileListener(file)
+	_ = file.Close()
+	if err != nil {
+		return nil, fmt.Errorf("using systemd socket fd: %w", err)
+	}
+
+	return ln, nil
 }

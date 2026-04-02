@@ -1,0 +1,10 @@
+[Unit]
+Description=WP Packages Socket
+PartOf=wppackages.service
+
+[Socket]
+ListenStream={{ go_upstream_addr | default(go_listen_addr) }}
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

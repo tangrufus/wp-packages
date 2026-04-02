@@ -7,10 +7,13 @@
     group: www-data
     mode: "0640"
 
-- name: Remove legacy wppackages socket unit
-  file:
-    path: /etc/systemd/system/wppackages.socket
-    state: absent
+- name: Deploy wppackages socket
+  template:
+    src: wppackages.socket.j2
+    dest: /etc/systemd/system/wppackages.socket
+    owner: root
+    group: root
+    mode: "0644"
   notify: Reload systemd
 
 - name: Deploy wppackages service
@@ -139,6 +142,12 @@
 
 - name: Flush handlers
   meta: flush_handlers
+
+- name: Enable and start wppackages socket
+  service:
+    name: wppackages.socket
+    state: started
+    enabled: yes
 
 - name: Enable and start wppackages service
   service:

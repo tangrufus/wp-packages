@@ -13,7 +13,7 @@
 	}
 
 	# Reverse proxy to Go app — retry during restarts for zero-downtime deploys
-	reverse_proxy {{ go_upstream_addr | default("localhost" ~ go_listen_addr) }} {
+	reverse_proxy {{ go_upstream_addr | default(go_listen_addr) }} {
 		header_up X-Real-IP {remote_host}
 		lb_try_duration 10s
 		lb_try_interval 100ms

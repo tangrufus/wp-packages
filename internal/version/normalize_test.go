@@ -150,3 +150,72 @@ func TestNormalizeVersions(t *testing.T) {
 		t.Error("3.1.0-dev1 should have been filtered out")
 	}
 }
+
+func TestIsStable(t *testing.T) {
+	stable := []string{"1.0", "1.0.0", "10.6.2", "5.3.2"}
+	for _, v := range stable {
+		if !IsStable(v) {
+			t.Errorf("IsStable(%q) = false, want true", v)
+		}
+	}
+
+	unstable := []string{"1.0-beta1", "10.7.0-beta.1", "1.0-RC2", "1.0-alpha", "1.0-dev", "1.0-dev.1"}
+	for _, v := range unstable {
+		if IsStable(v) {
+			t.Errorf("IsStable(%q) = true, want false", v)
+		}
+	}
+}
+
+func TestLatest(t *testing.T) {
+	tests := []struct {
+		name     string
+		versions map[string]string
+		want     string
+	}{
+		{
+			name:     "stable wins over higher beta",
+			versions: map[string]string{"10.6.2": "", "10.7.0-beta.1": "", "10.6.1": ""},
+			want:     "10.6.2",
+		},
+		{
+			name:     "only betas returns highest beta",
+			versions: map[string]string{"1.0-beta1": "", "1.0-beta2": ""},
+			want:     "1.0-beta2",
+		},
+		{
+			name:     "dev-trunk excluded",
+			versions: map[string]string{"dev-trunk": "", "1.0": ""},
+			want:     "1.0",
+		},
+		{
+			name:     "only dev-trunk returns empty",
+			versions: map[string]string{"dev-trunk": ""},
+			want:     "",
+		},
+		{
+			name:     "empty map",
+			versions: map[string]string{},
+			want:     "",
+		},
+		{
+			name:     "stable with RC",
+			versions: map[string]string{"2.0": "", "2.1-RC1": "", "1.9": ""},
+			want:     "2.0",
+		},
+		{
+			name:     "multiple stable picks highest",
+			versions: map[string]string{"1.0": "", "2.0": "", "3.0": ""},
+			want:     "3.0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Latest(tt.versions)
+			if got != tt.want {
+				t.Errorf("Latest() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

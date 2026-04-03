@@ -58,10 +58,14 @@ func NormalizeVersions(versions map[string]string) map[string]string {
 }
 
 // Compare compares two version strings numerically by segment.
-// Returns -1, 0, or 1.
+// Pre-release suffixes (e.g. -beta1) are compared lexically when
+// numeric segments are equal. Returns -1, 0, or 1.
 func Compare(a, b string) int {
-	aParts := strings.Split(a, ".")
-	bParts := strings.Split(b, ".")
+	aBase, aSuffix := splitSuffix(a)
+	bBase, bSuffix := splitSuffix(b)
+
+	aParts := strings.Split(aBase, ".")
+	bParts := strings.Split(bBase, ".")
 	maxLen := len(aParts)
 	if len(bParts) > maxLen {
 		maxLen = len(bParts)
@@ -78,20 +82,51 @@ func Compare(a, b string) int {
 			return c
 		}
 	}
-	return 0
+
+	// Same base version — compare suffixes.
+	// No suffix (stable) > any suffix (pre-release).
+	if aSuffix == "" && bSuffix != "" {
+		return 1
+	}
+	if aSuffix != "" && bSuffix == "" {
+		return -1
+	}
+	return cmp.Compare(strings.ToLower(aSuffix), strings.ToLower(bSuffix))
 }
 
-// Latest returns the highest version from a map of version -> download URL,
-// excluding dev-trunk. Returns empty string if no versions are present.
+// splitSuffix splits "1.0-beta1" into ("1.0", "beta1").
+func splitSuffix(v string) (string, string) {
+	if i := strings.IndexByte(v, '-'); i >= 0 {
+		return v[:i], v[i+1:]
+	}
+	return v, ""
+}
+
+// IsStable returns true if the version has no pre-release suffix.
+func IsStable(v string) bool {
+	return !strings.Contains(v, "-")
+}
+
+// Latest returns the highest stable version from a map of version -> download URL,
+// excluding dev-trunk. Falls back to the highest pre-release version if no stable
+// versions exist.
 func Latest(versions map[string]string) string {
-	var latest string
+	var latestStable, latestAny string
 	for v := range versions {
 		if v == "dev-trunk" {
 			continue
 		}
-		if latest == "" || Compare(v, latest) > 0 {
-			latest = v
+		if IsStable(v) {
+			if latestStable == "" || Compare(v, latestStable) > 0 {
+				latestStable = v
+			}
+		}
+		if latestAny == "" || Compare(v, latestAny) > 0 {
+			latestAny = v
 		}
 	}
-	return latest
+	if latestStable != "" {
+		return latestStable
+	}
+	return latestAny
 }

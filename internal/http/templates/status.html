@@ -171,8 +171,7 @@ function switchTab(t){
 <script>
 document.querySelectorAll('[data-time]').forEach(function(el){
   var raw=el.dataset.time;
-  var d=new Date(raw);
-  if(isNaN(d)){d=new Date(raw.replace(' ','T')+'Z')}
+  var d=new Date(raw.indexOf('T')>-1||raw.indexOf('Z')>-1?raw:raw.replace(' ','T')+'Z');
   if(isNaN(d))return;
   el.textContent=d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
 });

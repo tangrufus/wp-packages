@@ -397,6 +397,9 @@ func handleDetail(a *app.App, tmpl *templateSet) http.HandlerFunc {
 		if pkg.Description != "" {
 			softwareApp["description"] = pkg.Description
 		}
+		if pkg.UpdatedAt != "" {
+			softwareApp["dateModified"] = pkg.UpdatedAt
+		}
 
 		breadcrumbs := map[string]any{
 			"@context": "https://schema.org",
